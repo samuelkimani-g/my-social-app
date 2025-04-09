@@ -3,17 +3,17 @@
 import { useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
-import { Mail, Lock, AlertCircle, ShieldCheck } from "lucide-react"
+import { Mail, Lock, AlertCircle } from "lucide-react"
+import { ADMIN_EMAILS } from "../config/env.js"
 
 export default function Register() {
   const emailRef = useRef()
   const passwordRef = useRef()
   const passwordConfirmRef = useRef()
-  const { signup, setAdminStatus } = useAuth()
+  const { signup } = useAuth()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const [isAdmin, setIsAdmin] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -26,18 +26,16 @@ export default function Register() {
       setError("")
       setLoading(true)
       const result = await signup(emailRef.current.value, passwordRef.current.value)
-
       console.log("User registered:", result.user.uid)
 
-      // Set admin status if checkbox is checked
-      if (isAdmin) {
-        const adminSet = setAdminStatus(result.user.uid, true)
-        console.log("Admin status set:", adminSet)
+      // Check if the email is in the admin list
+      const isAdminEmail = ADMIN_EMAILS.some(
+        (adminEmail) => adminEmail.toLowerCase() === emailRef.current.value.toLowerCase(),
+      )
 
-        // Force a small delay to ensure admin status is set before redirect
-        setTimeout(() => {
-          navigate("/admin-dashboard")
-        }, 100)
+      // Redirect based on admin status
+      if (isAdminEmail) {
+        navigate("/admin-dashboard")
       } else {
         navigate("/dashboard")
       }
@@ -117,30 +115,12 @@ export default function Register() {
             </div>
           </div>
 
-          <div className="flex items-center mb-4">
-            <input
-              id="admin-checkbox"
-              type="checkbox"
-              checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="admin-checkbox" className="ml-2 flex items-center text-sm text-gray-700">
-              <span>Register as Admin</span>
-              {isAdmin && <ShieldCheck className="ml-1 h-4 w-4 text-purple-600" />}
-            </label>
-          </div>
-
           <button
             type="submit"
             disabled={loading}
-            className={`w-full ${
-              isAdmin ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-500 hover:bg-blue-600"
-            } text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-              isAdmin ? "focus:ring-purple-500" : "focus:ring-blue-500"
-            }`}
+            className="w-full bg-cohere-accent hover:opacity-90 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-cohere-accent"
           >
-            {loading ? "Signing Up..." : isAdmin ? "Sign Up as Admin" : "Sign Up"}
+            {loading ? "Signing Up..." : "Sign Up"}
           </button>
         </form>
 

@@ -44,6 +44,14 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Custom Cohere theme colors
+        cohere: {
+          primary: "#121B3E", // Deep navy blue
+          accent: "#3D5AF1", // Bright blue accent
+          secondary: "#252C48", // Lighter navy blue
+          light: "#F8F9FC", // Almost white for contrast
+          gray: "#8492A6", // Neutral gray
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

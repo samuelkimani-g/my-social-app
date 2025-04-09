@@ -11,7 +11,9 @@ import {
   signInWithPopup,
   updateProfile,
 } from "firebase/auth"
-import { auth } from "../firebase/firebase-config.js"
+import { doc, getDoc, setDoc } from "firebase/firestore"
+import { auth, db } from "../firebase/firebase-config.js"
+import { ADMIN_EMAILS } from "../config/env.js"
 
 const AuthContext = createContext()
 
@@ -24,8 +26,42 @@ export function AuthProvider({ children }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  function signup(email, password) {
-    return createUserWithEmailAndPassword(auth, email, password)
+  async function signup(email, password) {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password)
+
+      // Check if the email is in the admin list (case insensitive)
+      const isAdminEmail = ADMIN_EMAILS.some((adminEmail) => adminEmail.toLowerCase() === email.toLowerCase())
+
+      // Create or update user document with admin status if applicable
+      const userRef = doc(db, "users", result.user.uid)
+      await setDoc(
+        userRef,
+        {
+          username: email.split("@")[0],
+          email: email.toLowerCase(),
+          profilePic: result.user.photoURL || "",
+          bio: "",
+          followersCount: 0,
+          followingCount: 0,
+          postsCount: 0,
+          isBanned: false,
+          role: isAdminEmail ? "admin" : "user",
+          createdAt: new Date(),
+        },
+        { merge: true },
+      )
+
+      // Log admin creation for audit purposes
+      if (isAdminEmail) {
+        console.log(`Admin user created: ${email}`)
+      }
+
+      return result
+    } catch (error) {
+      console.error("Error during signup:", error)
+      throw error
+    }
   }
 
   function login(email, password) {
@@ -33,7 +69,6 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
-    localStorage.removeItem(`admin_${currentUser?.uid}`)
     return signOut(auth)
   }
 
@@ -41,9 +76,45 @@ export function AuthProvider({ children }) {
     return sendPasswordResetEmail(auth, email)
   }
 
-  function googleSignIn() {
-    const provider = new GoogleAuthProvider()
-    return signInWithPopup(auth, provider)
+  async function googleSignIn() {
+    try {
+      const provider = new GoogleAuthProvider()
+      const result = await signInWithPopup(auth, provider)
+
+      // Check if the email is in the admin list (case insensitive)
+      const isAdminEmail = ADMIN_EMAILS.some(
+        (adminEmail) => adminEmail.toLowerCase() === result.user.email.toLowerCase(),
+      )
+
+      // Create or update user document with admin status if applicable
+      const userRef = doc(db, "users", result.user.uid)
+      const userDoc = await getDoc(userRef)
+
+      if (!userDoc.exists()) {
+        await setDoc(userRef, {
+          username: result.user.email.split("@")[0],
+          email: result.user.email.toLowerCase(),
+          profilePic: result.user.photoURL || "",
+          bio: "",
+          followersCount: 0,
+          followingCount: 0,
+          postsCount: 0,
+          isBanned: false,
+          role: isAdminEmail ? "admin" : "user",
+          createdAt: new Date(),
+        })
+
+        // Log admin creation for audit purposes
+        if (isAdminEmail) {
+          console.log(`Admin user created via Google: ${result.user.email}`)
+        }
+      }
+
+      return result
+    } catch (error) {
+      console.error("Error during Google sign in:", error)
+      throw error
+    }
   }
 
   function updateUserProfile(displayName, photoURL) {
@@ -53,31 +124,30 @@ export function AuthProvider({ children }) {
     })
   }
 
-  // Function to set admin status
-  function setAdminStatus(userId, adminStatus) {
-    if (adminStatus) {
-      localStorage.setItem(`admin_${userId}`, "true")
-    } else {
-      localStorage.removeItem(`admin_${userId}`)
-    }
-
-    // If this is the current user, update the isAdmin state
-    if (currentUser && currentUser.uid === userId) {
-      setIsAdmin(adminStatus)
-    }
-
-    return adminStatus // Return the status for easier checking
-  }
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user)
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Check if user is admin based on email or stored admin status
-        const userIsAdmin = user.email === "admin@gmail.com" || localStorage.getItem(`admin_${user.uid}`) === "true"
-        setIsAdmin(userIsAdmin)
-        console.log("User authenticated, admin status:", userIsAdmin)
+        setCurrentUser(user)
+
+        // Check if user is admin in Firestore
+        try {
+          const userRef = doc(db, "users", user.uid)
+          const userDoc = await getDoc(userRef)
+
+          if (userDoc.exists()) {
+            const userData = userDoc.data()
+            const userIsAdmin = userData.role === "admin"
+            setIsAdmin(userIsAdmin)
+            console.log("User authenticated, admin status:", userIsAdmin)
+          } else {
+            setIsAdmin(false)
+          }
+        } catch (error) {
+          console.error("Error checking admin status:", error)
+          setIsAdmin(false)
+        }
       } else {
+        setCurrentUser(null)
         setIsAdmin(false)
       }
       setLoading(false)
@@ -95,7 +165,6 @@ export function AuthProvider({ children }) {
     resetPassword,
     googleSignIn,
     updateUserProfile,
-    setAdminStatus,
   }
 
   return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>

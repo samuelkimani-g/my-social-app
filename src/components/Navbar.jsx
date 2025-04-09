@@ -3,7 +3,7 @@
 import { Link } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
 import { useState } from "react"
-import { LogOut, Menu, X, ShieldCheck, User } from "lucide-react"
+import { LogOut, Menu, X, User, Users, Search, Home, ShieldCheck } from "lucide-react"
 
 export default function Navbar() {
   const { currentUser, logout, isAdmin } = useAuth()
@@ -20,11 +20,12 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-white shadow-md">
+    <nav className="bg-cohere-primary text-cohere-light shadow-md">
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center py-4">
-          <Link to="/" className="text-xl font-bold text-gray-800 flex items-center">
-            Firebase Auth
+          <Link to="/" className="text-xl font-bold flex items-center">
+            <img src="/cohere-icon.svg" alt="Cohere Logo" className="h-8 w-8 mr-2" />
+            <span className="text-gradient-cohere">Cohere</span>
             {isAdmin && <ShieldCheck className="ml-2 h-5 w-5 text-purple-600" />}
           </Link>
 
@@ -32,7 +33,7 @@ export default function Navbar() {
           <div className="md:hidden">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-gray-500 hover:text-gray-700 focus:outline-none"
+              className="text-cohere-light hover:text-cohere-accent focus:outline-none"
             >
               {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -42,30 +43,42 @@ export default function Navbar() {
           <div className="hidden md:flex items-center space-x-4">
             {currentUser ? (
               <>
-                <Link to="/dashboard" className="text-gray-600 hover:text-gray-900 flex items-center">
-                  <User size={16} className="mr-1" />
-                  Dashboard
+                <Link to="/dashboard" className="text-cohere-light hover:text-cohere-accent flex items-center">
+                  <Home size={16} className="mr-1" />
+                  Home
+                </Link>
+                <Link to="/search" className="text-cohere-light hover:text-cohere-accent flex items-center">
+                  <Search size={16} className="mr-1" />
+                  Search
+                </Link>
+                <Link to="/explore" className="text-cohere-light hover:text-cohere-accent flex items-center">
+                  <Users size={16} className="mr-1" />
+                  Explore
                 </Link>
                 {isAdmin && (
-                  <Link to="/admin-dashboard" className="text-gray-600 hover:text-gray-900 flex items-center">
+                  <Link to="/admin-dashboard" className="text-cohere-light hover:text-cohere-accent flex items-center">
                     <ShieldCheck size={16} className="mr-1 text-purple-600" />
                     Admin
                   </Link>
                 )}
-                <Link to="/profile" className="text-gray-600 hover:text-gray-900">
+                <Link to="/profile" className="text-cohere-light hover:text-cohere-accent flex items-center">
+                  <User size={16} className="mr-1" />
                   Profile
                 </Link>
-                <button onClick={handleLogout} className="flex items-center gap-1 text-gray-600 hover:text-gray-900">
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1 text-cohere-light hover:text-cohere-accent"
+                >
                   <LogOut size={16} />
                   <span>Logout</span>
                 </button>
               </>
             ) : (
               <>
-                <Link to="/login" className="text-gray-600 hover:text-gray-900">
+                <Link to="/login" className="text-cohere-light hover:text-cohere-accent">
                   Login
                 </Link>
-                <Link to="/register" className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md">
+                <Link to="/register" className="bg-cohere-accent hover:opacity-90 text-white px-4 py-2 rounded-md">
                   Register
                 </Link>
               </>
@@ -75,22 +88,38 @@ export default function Navbar() {
 
         {/* Mobile menu */}
         {isMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-200">
+          <div className="md:hidden py-4 border-t border-cohere-secondary">
             <div className="flex flex-col space-y-3">
               {currentUser ? (
                 <>
                   <Link
                     to="/dashboard"
-                    className="text-gray-600 hover:text-gray-900 py-2 flex items-center"
+                    className="text-cohere-light hover:text-cohere-accent py-2 flex items-center"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    <User size={16} className="mr-1" />
-                    Dashboard
+                    <Home size={16} className="mr-1" />
+                    Home
+                  </Link>
+                  <Link
+                    to="/search"
+                    className="text-cohere-light hover:text-cohere-accent py-2 flex items-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Search size={16} className="mr-1" />
+                    Search
+                  </Link>
+                  <Link
+                    to="/explore"
+                    className="text-cohere-light hover:text-cohere-accent py-2 flex items-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Users size={16} className="mr-1" />
+                    Explore
                   </Link>
                   {isAdmin && (
                     <Link
                       to="/admin-dashboard"
-                      className="text-gray-600 hover:text-gray-900 py-2 flex items-center"
+                      className="text-cohere-light hover:text-cohere-accent py-2 flex items-center"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       <ShieldCheck size={16} className="mr-1 text-purple-600" />
@@ -99,9 +128,10 @@ export default function Navbar() {
                   )}
                   <Link
                     to="/profile"
-                    className="text-gray-600 hover:text-gray-900 py-2"
+                    className="text-cohere-light hover:text-cohere-accent py-2 flex items-center"
                     onClick={() => setIsMenuOpen(false)}
                   >
+                    <User size={16} className="mr-1" />
                     Profile
                   </Link>
                   <button
@@ -109,7 +139,7 @@ export default function Navbar() {
                       handleLogout()
                       setIsMenuOpen(false)
                     }}
-                    className="flex items-center gap-1 text-gray-600 hover:text-gray-900 py-2"
+                    className="flex items-center gap-1 text-cohere-light hover:text-cohere-accent py-2"
                   >
                     <LogOut size={16} />
                     <span>Logout</span>
@@ -119,14 +149,14 @@ export default function Navbar() {
                 <>
                   <Link
                     to="/login"
-                    className="text-gray-600 hover:text-gray-900 py-2"
+                    className="text-cohere-light hover:text-cohere-accent py-2"
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Login
                   </Link>
                   <Link
                     to="/register"
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md inline-block"
+                    className="bg-cohere-accent hover:opacity-90 text-white px-4 py-2 rounded-md inline-block"
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Register

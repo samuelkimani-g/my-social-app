@@ -7,6 +7,9 @@ import ForgotPassword from "./pages/ForgotPassword.jsx"
 import Dashboard from "./pages/Dashboard.jsx"
 import AdminDashboard from "./pages/AdminDashboard.jsx"
 import Profile from "./pages/Profile.jsx"
+import UserProfile from "./pages/UserProfile.jsx"
+import SearchPage from "./pages/SearchPage.jsx"
+import ExplorePage from "./pages/ExplorePage.jsx"
 import Navbar from "./components/Navbar.jsx"
 import PrivateRoute from "./components/PrivateRoute.jsx"
 import AdminRoute from "./components/AdminRoute.jsx"
@@ -54,6 +57,30 @@ function App() {
             element={
               <PrivateRoute>
                 <Profile />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/profile/:userId"
+            element={
+              <PrivateRoute>
+                <UserProfile />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/search"
+            element={
+              <PrivateRoute>
+                <SearchPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/explore"
+            element={
+              <PrivateRoute>
+                <ExplorePage />
               </PrivateRoute>
             }
           />

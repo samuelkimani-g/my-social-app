@@ -3,16 +3,16 @@
 import { useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
-import { Mail, Lock, AlertCircle, ShieldCheck } from "lucide-react"
+import { Mail, Lock, AlertCircle } from "lucide-react"
+import { ADMIN_EMAILS } from "../config/env.js"
 
 export default function Login() {
   const emailRef = useRef()
   const passwordRef = useRef()
-  const { login, googleSignIn, setAdminStatus } = useAuth()
+  const { login, googleSignIn } = useAuth()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const [isAdmin, setIsAdmin] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -21,21 +21,17 @@ export default function Login() {
       setError("")
       setLoading(true)
       const result = await login(emailRef.current.value, passwordRef.current.value)
-
       console.log("User logged in:", result.user.uid)
 
-      // If admin login is selected, set admin status
-      if (isAdmin) {
-        setAdminStatus(result.user.uid, true)
-        console.log("Admin status set on login")
+      // Check if the email is in the admin list
+      const isAdminEmail = ADMIN_EMAILS.some(
+        (adminEmail) => adminEmail.toLowerCase() === emailRef.current.value.toLowerCase(),
+      )
 
-        // Force a small delay to ensure admin status is set before redirect
-        setTimeout(() => {
-          navigate("/admin-dashboard")
-        }, 100)
+      // Redirect based on admin status
+      if (isAdminEmail) {
+        navigate("/admin-dashboard")
       } else {
-        // If not admin, remove any existing admin status
-        setAdminStatus(result.user.uid, false)
         navigate("/dashboard")
       }
     } catch (error) {
@@ -50,12 +46,14 @@ export default function Login() {
       setLoading(true)
       const result = await googleSignIn()
 
-      // If admin login is selected, set admin status
-      if (isAdmin) {
-        setAdminStatus(result.user.uid, true)
-        setTimeout(() => {
-          navigate("/admin-dashboard")
-        }, 100)
+      // Check if the email is in the admin list
+      const isAdminEmail = ADMIN_EMAILS.some(
+        (adminEmail) => adminEmail.toLowerCase() === result.user.email.toLowerCase(),
+      )
+
+      // Redirect based on admin status
+      if (isAdminEmail) {
+        navigate("/admin-dashboard")
       } else {
         navigate("/dashboard")
       }
@@ -116,21 +114,6 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Admin login option */}
-          <div className="flex items-center mb-4">
-            <input
-              id="admin-login"
-              type="checkbox"
-              checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
-              className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-            />
-            <label htmlFor="admin-login" className="ml-2 flex items-center text-sm text-gray-700">
-              <span>Login as Admin</span>
-              {isAdmin && <ShieldCheck className="ml-1 h-4 w-4 text-purple-600" />}
-            </label>
-          </div>
-
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <input
@@ -153,13 +136,9 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full ${
-              isAdmin ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-500 hover:bg-blue-600"
-            } text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-              isAdmin ? "focus:ring-purple-500" : "focus:ring-blue-500"
-            }`}
+            className="w-full bg-cohere-accent hover:opacity-90 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-cohere-accent"
           >
-            {loading ? "Logging in..." : isAdmin ? "Log In as Admin" : "Log In"}
+            {loading ? "Logging in..." : "Log In"}
           </button>
         </form>
 
@@ -177,11 +156,7 @@ export default function Login() {
             <button
               onClick={handleGoogleSignIn}
               disabled={loading}
-              className={`w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium ${
-                isAdmin ? "text-purple-700" : "text-gray-700"
-              } hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isAdmin ? "focus:ring-purple-500" : "focus:ring-blue-500"
-              }`}
+              className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-cohere-primary hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-cohere-accent"
             >
               <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
                 <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
@@ -203,7 +178,7 @@ export default function Login() {
                   />
                 </g>
               </svg>
-              {isAdmin ? "Sign in with Google as Admin" : "Sign in with Google"}
+              Sign in with Google
             </button>
           </div>
         </div>

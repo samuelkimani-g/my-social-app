@@ -14,3 +14,24 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
+
+/* Cohere theme CSS variables */
+:root {
+  --cohere-primary: #121b3e;
+  --cohere-accent: #3d5af1;
+  --cohere-secondary: #252c48;
+  --cohere-light: #f8f9fc;
+  --cohere-gray: #8492a6;
+}
+
+.bg-gradient-cohere {
+  background: linear-gradient(135deg, var(--cohere-primary) 0%, var(--cohere-secondary) 100%);
+}
+
+.text-gradient-cohere {
+  background: linear-gradient(90deg, var(--cohere-accent) 0%, #5d77ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
