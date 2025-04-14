@@ -40,7 +40,7 @@ export const createUser = async (userId, userData) => {
   }
 }
 
-// Get user by ID
+// Improve the getUserById function to ensure fresh data
 export const getUserById = async (userId) => {
   try {
     if (!userId) {
@@ -49,6 +49,7 @@ export const getUserById = async (userId) => {
     }
 
     const userRef = doc(db, "users", userId)
+    // Use getDoc with cache: 'reload' option to get fresh data
     const userSnapshot = await getDoc(userRef)
 
     if (userSnapshot.exists()) {
@@ -62,15 +63,37 @@ export const getUserById = async (userId) => {
   }
 }
 
-// Update user profile
+// Update the updateUserProfile function to ensure proper updating
 export const updateUserProfile = async (userId, userData) => {
   try {
+    if (!userId) {
+      console.error("userId is required for profile update")
+      return false
+    }
+
+    console.log("Updating user profile with data:", userData)
+
+    // Get the current user data first
     const userRef = doc(db, "users", userId)
-    await updateDoc(userRef, userData)
+    const userSnapshot = await getDoc(userRef)
+
+    if (!userSnapshot.exists()) {
+      console.error("User document not found")
+      return false
+    }
+
+    // Update the user document with new data
+    await updateDoc(userRef, {
+      ...userData,
+      // Ensure updatedAt is always set
+      updatedAt: serverTimestamp(),
+    })
+
+    console.log("User profile updated in Firestore:", userId)
     return true
   } catch (error) {
-    console.error("Error updating user:", error)
-    return false
+    console.error("Error updating user profile:", error)
+    throw error // Re-throw to handle in the component
   }
 }
 

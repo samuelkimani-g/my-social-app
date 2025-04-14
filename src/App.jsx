@@ -11,17 +11,29 @@ import UserProfile from "./pages/UserProfile.jsx"
 import SearchPage from "./pages/SearchPage.jsx"
 import ExplorePage from "./pages/ExplorePage.jsx"
 import Navbar from "./components/Navbar.jsx"
-import PrivateRoute from "./components/PrivateRoute.jsx"
-import AdminRoute from "./components/AdminRoute.jsx"
 import { useAuth } from "./contexts/AuthContext.jsx"
+import { useEffect } from "react"
+import ProfileFollowers from "./pages/ProfileFollowers.jsx"
 
 function App() {
   const { currentUser, isAdmin } = useAuth()
 
+  // Handle admin redirects
+  useEffect(() => {
+    if (currentUser && isAdmin) {
+      // If admin is on a non-admin page, redirect to admin dashboard
+      if (!window.location.pathname.includes("/admin") && window.location.pathname !== "/admin-dashboard") {
+        window.location.href = "/admin-dashboard"
+      }
+    }
+  }, [currentUser, isAdmin])
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="container mx-auto py-8 px-4">
+      {/* Only show navbar for non-admin users */}
+      {!(currentUser && isAdmin) && <Navbar />}
+
+      <div className={`${currentUser && isAdmin ? "" : "container mx-auto py-8 px-4"}`}>
         <Routes>
           <Route
             path="/login"
@@ -39,49 +51,52 @@ function App() {
           <Route
             path="/dashboard"
             element={
-              <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
+              currentUser ? isAdmin ? <Navigate to="/admin-dashboard" /> : <Dashboard /> : <Navigate to="/login" />
             }
           />
           <Route
             path="/admin-dashboard"
             element={
-              <AdminRoute>
-                <AdminDashboard />
-              </AdminRoute>
+              currentUser ? isAdmin ? <AdminDashboard /> : <Navigate to="/dashboard" /> : <Navigate to="/login" />
             }
           />
           <Route
             path="/profile"
             element={
-              <PrivateRoute>
-                <Profile />
-              </PrivateRoute>
+              currentUser ? isAdmin ? <Navigate to="/admin-dashboard" /> : <Profile /> : <Navigate to="/login" />
             }
           />
           <Route
             path="/profile/:userId"
             element={
-              <PrivateRoute>
-                <UserProfile />
-              </PrivateRoute>
+              currentUser ? isAdmin ? <Navigate to="/admin-dashboard" /> : <UserProfile /> : <Navigate to="/login" />
+            }
+          />
+          {/* Add the new route for followers/following */}
+          <Route
+            path="/profile/:userId/:type"
+            element={
+              currentUser ? (
+                isAdmin ? (
+                  <Navigate to="/admin-dashboard" />
+                ) : (
+                  <ProfileFollowers />
+                )
+              ) : (
+                <Navigate to="/login" />
+              )
             }
           />
           <Route
             path="/search"
             element={
-              <PrivateRoute>
-                <SearchPage />
-              </PrivateRoute>
+              currentUser ? isAdmin ? <Navigate to="/admin-dashboard" /> : <SearchPage /> : <Navigate to="/login" />
             }
           />
           <Route
             path="/explore"
             element={
-              <PrivateRoute>
-                <ExplorePage />
-              </PrivateRoute>
+              currentUser ? isAdmin ? <Navigate to="/admin-dashboard" /> : <ExplorePage /> : <Navigate to="/login" />
             }
           />
           <Route
@@ -96,6 +111,16 @@ function App() {
               ) : (
                 <Navigate to="/login" />
               )
+            }
+          />
+          {/* Catch-all route - 404 */}
+          <Route
+            path="*"
+            element={
+              <div className="text-center p-10">
+                <h2 className="text-2xl mb-4">Page Not Found</h2>
+                <p>The page you're looking for doesn't exist or you don't have permission to view it.</p>
+              </div>
             }
           />
         </Routes>

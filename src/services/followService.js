@@ -11,6 +11,7 @@ import {
   where,
   serverTimestamp,
 } from "firebase/firestore"
+import { createNotification } from "./notificationService"
 
 // Follow a user
 export const followUser = async (followerId, followeeId) => {
@@ -56,6 +57,14 @@ export const followUser = async (followerId, followeeId) => {
         followersCount: (followeeData.followersCount || 0) + 1,
       })
     }
+
+    // Create notification for the followee
+    await createNotification({
+      userId: followeeId,
+      type: "follow",
+      fromUserId: followerId,
+      data: {},
+    })
 
     return { success: true }
   } catch (error) {

@@ -2,15 +2,19 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "../contexts/AuthContext.jsx"
-import { getUserById, createUser } from "../services/userService"
+import { getUserById, createUser, getAllUsers } from "../services/userService"
 import { createPost, getAllPosts, getFollowedPosts } from "../services/postService"
 import { getFollowing } from "../services/followService"
 import { Link } from "react-router-dom"
-import { ImageIcon, Send, User, Users, Search, RefreshCw } from "lucide-react"
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { ImageIcon, Send, User, Users, Search, RefreshCw, FileText } from "lucide-react"
+import PostInteractions from "../components/PostInteractions"
+import FirestoreIndexNotice from "../components/FirestoreIndexNotice"
+
+// Import the image upload service
+import { uploadImage } from "../services/imageUploadService"
 
 export default function Dashboard() {
-  const { currentUser } = useAuth()
+  const { currentUser, isAdmin } = useAuth()
   const [user, setUser] = useState(null)
   const [posts, setPosts] = useState([])
   const [lastVisible, setLastVisible] = useState(null)
@@ -23,6 +27,7 @@ export default function Dashboard() {
   const [feedType, setFeedType] = useState("all") // "all" or "following"
   const [following, setFollowing] = useState([])
   const [followedUsers, setFollowedUsers] = useState([])
+  const [suggestedUsers, setSuggestedUsers] = useState([])
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -30,7 +35,7 @@ export default function Dashboard() {
       if (currentUser) {
         try {
           console.log("Initializing user data for:", currentUser.uid)
-          // Get or create user document
+          // Get or create user document - force a fresh fetch
           let userData = await getUserById(currentUser.uid)
 
           if (!userData) {
@@ -45,6 +50,12 @@ export default function Dashboard() {
           setUser(userData)
           console.log("User data loaded:", userData)
 
+          // If user is admin, don't load posts or following
+          if (userData?.role === "admin") {
+            setLoading(false)
+            return
+          }
+
           // Get following list
           const followingIds = await getFollowing(currentUser.uid)
           setFollowing(followingIds)
@@ -54,14 +65,18 @@ export default function Dashboard() {
           const followedUsersData = []
           for (const id of followingIds) {
             const userData = await getUserById(id)
-            if (userData) {
+            if (userData && userData.role !== "admin") {
+              // Skip admin users
               followedUsersData.push(userData)
             }
           }
           setFollowedUsers(followedUsersData)
 
           // Load posts
-          await loadPosts(feedType, followingIds)
+          await loadPosts("all")
+
+          // Load suggested users (excluding admins)
+          loadSuggestedUsers()
         } catch (error) {
           console.error("Error initializing user:", error)
           setError("Failed to load user data")
@@ -73,25 +88,70 @@ export default function Dashboard() {
     initializeUser()
   }, [currentUser])
 
-  const loadPosts = async (type, followingIds = following) => {
+  const loadSuggestedUsers = async () => {
+    try {
+      // Get some users to suggest, excluding admins and already followed users
+      const { users } = await getAllUsers(null, 5)
+      const filtered = users
+        .filter((u) => u.id !== currentUser.uid && !following.includes(u.id) && u.role !== "admin" && !u.isBanned)
+        .slice(0, 5)
+
+      setSuggestedUsers(filtered)
+    } catch (error) {
+      console.error("Error loading suggested users:", error)
+    }
+  }
+
+  // Fix the loadPosts function to handle errors better
+  const loadPosts = async (type) => {
     try {
       setLoading(true)
+      setError("")
       console.log("Loading posts, feed type:", type)
 
       let postsData
-      if (type === "following" && followingIds.length > 0) {
-        postsData = await getFollowedPosts(currentUser.uid, followingIds)
+      if (type === "following" && following.length > 0) {
+        postsData = await getFollowedPosts(currentUser.uid, following)
       } else {
         postsData = await getAllPosts()
       }
 
       console.log("Posts data received:", postsData)
 
+      if (!postsData) {
+        console.error("No posts data received")
+        setError("Failed to load posts: No data received")
+        setLoading(false)
+        return
+      }
+
+      // Initialize posts array
+      const postsArray = postsData.posts || []
+      console.log("Posts array length:", postsArray.length)
+
+      if (postsArray.length === 0) {
+        console.log("No posts found for this feed type")
+        setPosts([])
+        setLastVisible(null)
+        setFeedType(type)
+        setLoading(false)
+        return
+      }
+
       // For each post, get the author's username
       const postsWithAuthor = await Promise.all(
-        postsData.posts.map(async (post) => {
+        postsArray.map(async (post) => {
           try {
+            if (!post || !post.authorId) {
+              console.error("Invalid post data:", post)
+              return null
+            }
+
             const author = await getUserById(post.authorId)
+            // Skip posts from admin users or banned users
+            if (author?.role === "admin" || author?.isBanned) {
+              return null
+            }
             return {
               ...post,
               authorName: author ? author.username : "Unknown User",
@@ -108,14 +168,17 @@ export default function Dashboard() {
         }),
       )
 
-      console.log("Posts with author data:", postsWithAuthor)
-      setPosts(postsWithAuthor)
+      // Filter out null posts (from admins or banned users)
+      const filteredPosts = postsWithAuthor.filter((post) => post !== null)
+
+      console.log("Posts with author data:", filteredPosts)
+      setPosts(filteredPosts)
       setLastVisible(postsData.lastVisible)
       setFeedType(type)
       setLoading(false)
     } catch (error) {
       console.error("Error loading posts:", error)
-      setError("Failed to load posts")
+      setError("Failed to load posts: " + error.message)
       setLoading(false)
     }
   }
@@ -125,6 +188,7 @@ export default function Dashboard() {
 
     try {
       setLoading(true)
+      setError("")
 
       let postsData
       if (feedType === "following" && following.length > 0) {
@@ -133,10 +197,26 @@ export default function Dashboard() {
         postsData = await getAllPosts(lastVisible)
       }
 
+      if (!postsData || !postsData.posts) {
+        console.error("Invalid posts data received:", postsData)
+        setError("Failed to load more posts: Invalid data format")
+        setLoading(false)
+        return
+      }
+
       // For each post, get the author's username
       const postsWithAuthor = await Promise.all(
         postsData.posts.map(async (post) => {
+          if (!post || !post.authorId) {
+            console.error("Invalid post data:", post)
+            return null
+          }
+
           const author = await getUserById(post.authorId)
+          // Skip posts from admin users or banned users
+          if (author?.role === "admin" || author?.isBanned) {
+            return null
+          }
           return {
             ...post,
             authorName: author ? author.username : "Unknown User",
@@ -145,12 +225,15 @@ export default function Dashboard() {
         }),
       )
 
-      setPosts([...posts, ...postsWithAuthor])
+      // Filter out null posts (from admins or banned users)
+      const filteredPosts = postsWithAuthor.filter((post) => post !== null)
+
+      setPosts([...posts, ...filteredPosts])
       setLastVisible(postsData.lastVisible)
       setLoading(false)
     } catch (error) {
       console.error("Error loading more posts:", error)
-      setError("Failed to load more posts")
+      setError("Failed to load more posts: " + error.message)
       setLoading(false)
     }
   }
@@ -158,6 +241,11 @@ export default function Dashboard() {
   const handleImageChange = (e) => {
     const file = e.target.files[0]
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError("Image size exceeds 5MB limit")
+        return
+      }
+
       setPostImage(file)
 
       // Create preview
@@ -165,10 +253,15 @@ export default function Dashboard() {
       reader.onloadend = () => {
         setImagePreview(reader.result)
       }
+      reader.onerror = () => {
+        console.error("Error creating image preview")
+        setError("Failed to preview image")
+      }
       reader.readAsDataURL(file)
     }
   }
 
+  // Add this function to the Dashboard component to handle post creation better
   const handleSubmitPost = async (e) => {
     e.preventDefault()
 
@@ -177,18 +270,29 @@ export default function Dashboard() {
       return
     }
 
+    if (isAdmin) {
+      setError("Admin users cannot create posts")
+      return
+    }
+
     try {
       setPostLoading(true)
+      setError("")
       console.log("Creating new post...")
 
       let imageUrl = null
       if (postImage) {
-        console.log("Uploading image...")
-        const storage = getStorage()
-        const imageRef = ref(storage, `posts/${currentUser.uid}/${Date.now()}_${postImage.name}`)
-        await uploadBytes(imageRef, postImage)
-        imageUrl = await getDownloadURL(imageRef)
-        console.log("Image uploaded:", imageUrl)
+        try {
+          console.log("Uploading image...")
+          // Use the third-party image upload service instead of Firebase Storage
+          imageUrl = await uploadImage(postImage)
+          console.log("Image uploaded:", imageUrl)
+        } catch (uploadError) {
+          console.error("Error uploading image:", uploadError)
+          setError("Failed to upload image. Please try again.")
+          setPostLoading(false)
+          return
+        }
       }
 
       const postData = {
@@ -199,18 +303,15 @@ export default function Dashboard() {
 
       console.log("Saving post data:", postData)
       const result = await createPost(postData)
-      console.log("Post created with ID:", result?.id)
+      console.log("Post created:", result)
 
       if (result) {
         // Add the new post to the top of the posts list
         const newPost = {
           id: result.id,
-          ...postData,
+          ...result,
           authorName: user?.username || "You",
           authorPic: user?.profilePic || null,
-          timestamp: { seconds: Date.now() / 1000 }, // Approximate timestamp for immediate display
-          likesCount: 0,
-          commentsCount: 0,
         }
 
         setPosts([newPost, ...posts])
@@ -230,6 +331,19 @@ export default function Dashboard() {
       setError("Failed to create post: " + error.message)
       setPostLoading(false)
     }
+  }
+
+  // If user is admin, redirect to admin dashboard or show message
+  if (isAdmin) {
+    return (
+      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6 text-center">
+        <h2 className="text-xl font-semibold mb-4">Admin Access Restricted</h2>
+        <p className="mb-4">Admin users cannot access the regular user dashboard.</p>
+        <Link to="/admin-dashboard" className="bg-cohere-accent hover:opacity-90 text-white py-2 px-4 rounded">
+          Go to Admin Dashboard
+        </Link>
+      </div>
+    )
   }
 
   return (
@@ -334,6 +448,46 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Suggestions */}
+          {suggestedUsers.length > 0 && (
+            <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="font-medium text-gray-800">Suggested Users</h3>
+              </div>
+              <div className="p-4">
+                <ul className="divide-y divide-gray-200">
+                  {suggestedUsers.map((suggestedUser) => (
+                    <li key={suggestedUser.id} className="py-2">
+                      <Link
+                        to={`/profile/${suggestedUser.id}`}
+                        className="flex items-center hover:bg-gray-50 p-2 rounded"
+                      >
+                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center mr-3">
+                          {suggestedUser.profilePic ? (
+                            <img
+                              src={suggestedUser.profilePic || "/placeholder.svg"}
+                              alt={suggestedUser.username}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <User className="h-5 w-5 text-gray-400" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-800">{suggestedUser.username}</p>
+                          <p className="text-xs text-gray-500">
+                            {suggestedUser.followersCount || 0}{" "}
+                            {suggestedUser.followersCount === 1 ? "follower" : "followers"}
+                          </p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             <div className="p-4 border-b border-gray-200">
               <h3 className="font-medium text-gray-800">Quick Links</h3>
@@ -362,6 +516,8 @@ export default function Dashboard() {
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">{error}</div>
           )}
+
+          <FirestoreIndexNotice />
 
           {/* Post Creation */}
           <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
@@ -467,17 +623,34 @@ export default function Dashboard() {
           {/* Posts Feed */}
           <div className="space-y-6">
             {loading && posts.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cohere-accent mx-auto"></div>
-                <p className="mt-2 text-gray-500">Loading posts...</p>
+              <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cohere-accent mx-auto"></div>
+                <p className="mt-4 text-gray-500 font-medium">Loading your feed...</p>
+                <p className="text-gray-400 text-sm mt-2">This may take a moment</p>
               </div>
             ) : posts.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-md p-6 text-center">
-                <p className="text-gray-500">
+              <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto flex items-center justify-center">
+                  {feedType === "following" ? (
+                    <Users className="h-8 w-8 text-gray-400" />
+                  ) : (
+                    <FileText className="h-8 w-8 text-gray-400" />
+                  )}
+                </div>
+                <h3 className="mt-4 text-lg font-medium text-gray-700">No posts to show</h3>
+                <p className="text-gray-500 mt-2">
                   {feedType === "following"
-                    ? "No posts from users you follow. Try following more users or switch to All Posts."
-                    : "No posts available. Be the first to post something!"}
+                    ? "The people you follow haven't posted anything yet. Try following more users or switch to All Posts."
+                    : "Be the first to share something with the community!"}
                 </p>
+                {feedType === "following" && (
+                  <button
+                    onClick={() => loadPosts("all")}
+                    className="mt-4 bg-cohere-accent hover:opacity-90 text-white py-2 px-4 rounded-md"
+                  >
+                    View All Posts
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -518,10 +691,8 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      <div className="flex justify-between text-sm text-gray-500">
-                        <span>{post.likesCount || 0} likes</span>
-                        <span>{post.commentsCount || 0} comments</span>
-                      </div>
+                      {/* Post interactions component */}
+                      <PostInteractions post={post} onUpdate={() => loadPosts(feedType)} />
                     </div>
                   </div>
                 ))}

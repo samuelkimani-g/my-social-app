@@ -1,5 +1,6 @@
 import { db, auth, storage } from "./firebase-config"
 import { collection, getDocs, query, limit } from "firebase/firestore"
+import { connectFirestoreEmulator } from "firebase/firestore"
 
 // Test Firestore connection
 export const testFirestoreConnection = async () => {
@@ -17,6 +18,15 @@ export const testFirestoreConnection = async () => {
 
 // Initialize Firebase services
 export const initializeFirebaseServices = () => {
+  if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
+    try {
+      // Connect to Firestore emulator if available
+      connectFirestoreEmulator(db, "localhost", 8080)
+      console.log("Connected to Firestore emulator")
+    } catch (error) {
+      console.error("Failed to connect to emulators:", error)
+    }
+  }
   try {
     console.log("Firebase services initialized")
     return { db, auth, storage }

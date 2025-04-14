@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore"
+import { addDoc, collection, serverTimestamp, query, orderBy, limit, getDocs } from "firebase/firestore"
 import { db } from "../firebase/firebase-config"
 import { APP_CONFIG } from "../config/env"
 
@@ -43,5 +43,47 @@ export async function logSecurityEvent(event, userId = null, details = {}) {
     console.log(`Security event logged: ${event}`)
   } catch (error) {
     console.error("Error logging security event:", error)
+  }
+}
+
+/**
+ * Get admin action logs
+ * @param {number} limitCount - Maximum number of logs to retrieve
+ * @returns {Array} - Array of log objects
+ */
+export async function getAdminLogs(limitCount = 50) {
+  try {
+    const logsQuery = query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(limitCount))
+
+    const logsSnapshot = await getDocs(logsQuery)
+
+    return logsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }))
+  } catch (error) {
+    console.error("Error getting admin logs:", error)
+    return []
+  }
+}
+
+/**
+ * Get security event logs
+ * @param {number} limitCount - Maximum number of logs to retrieve
+ * @returns {Array} - Array of log objects
+ */
+export async function getSecurityLogs(limitCount = 50) {
+  try {
+    const logsQuery = query(collection(db, "security_logs"), orderBy("timestamp", "desc"), limit(limitCount))
+
+    const logsSnapshot = await getDocs(logsQuery)
+
+    return logsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }))
+  } catch (error) {
+    console.error("Error getting security logs:", error)
+    return []
   }
 }

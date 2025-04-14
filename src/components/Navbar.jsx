@@ -2,8 +2,9 @@
 
 import { Link } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { LogOut, Menu, X, User, Users, Search, Home, ShieldCheck } from "lucide-react"
+import NotificationsDropdown from "./NotificationsDropdown"
 
 export default function Navbar() {
   const { currentUser, logout, isAdmin } = useAuth()
@@ -18,6 +19,23 @@ export default function Navbar() {
       setError("Failed to log out")
     }
   }
+
+  // Add a useEffect to refresh the current user when the component mounts
+  useEffect(() => {
+    const refreshCurrentUser = async () => {
+      if (currentUser && currentUser.reload) {
+        try {
+          await currentUser.reload()
+          // Force a re-render by updating a state variable
+          setError("")
+        } catch (error) {
+          console.error("Error refreshing current user:", error)
+        }
+      }
+    }
+
+    refreshCurrentUser()
+  }, [currentUser])
 
   return (
     <nav className="bg-cohere-primary text-cohere-light shadow-md">
@@ -61,6 +79,7 @@ export default function Navbar() {
                     Admin
                   </Link>
                 )}
+                <NotificationsDropdown />
                 <Link to="/profile" className="text-cohere-light hover:text-cohere-accent flex items-center">
                   <User size={16} className="mr-1" />
                   Profile

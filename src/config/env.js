@@ -1,5 +1,4 @@
 // This file centralizes environment configuration
-// In production, these would be loaded from Vercel environment variables
 
 // Admin emails that should automatically be granted admin privileges
 export const ADMIN_EMAILS = ["wambui@gmail.com", "gichsammy4@gmail.com"]

@@ -5,13 +5,14 @@ import { useParams, Link } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
 import { getUserById } from "../services/userService"
 import { followUser, unfollowUser, checkIsFollowing } from "../services/followService"
-import { User, Calendar, MapPin, Mail, UserPlus, UserMinus, RefreshCw } from "lucide-react"
-import { db } from "../firebase"
+import { User, Calendar, MapPin, Mail, UserPlus, UserMinus, RefreshCw, AlertCircle } from "lucide-react"
 import { collection, query, where, orderBy, limit, getDocs, startAfter } from "firebase/firestore"
+import { db } from "../firebase/firebase-config"
+import PostInteractions from "../components/PostInteractions"
 
 export default function UserProfile() {
   const { userId } = useParams()
-  const { currentUser } = useAuth()
+  const { currentUser, isAdmin } = useAuth()
   const [user, setUser] = useState(null)
   const [posts, setPosts] = useState([])
   const [lastVisible, setLastVisible] = useState(null)
@@ -20,61 +21,94 @@ export default function UserProfile() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
 
-  useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        setLoading(true)
+  // Update the loadUserData function to ensure fresh data
+  const loadUserData = async () => {
+    if (!userId) return
 
-        // Get user data
-        const userData = await getUserById(userId)
-        if (!userData) {
-          setError("User not found")
-          setLoading(false)
-          return
-        }
+    try {
+      console.log("Loading user profile for:", userId)
+      setLoading(true)
+      setError("")
 
-        setUser(userData)
-
-        // Check if current user is following this user
-        if (currentUser && currentUser.uid !== userId) {
-          const followStatus = await checkIsFollowing(currentUser.uid, userId)
-          setIsFollowing(followStatus)
-        }
-
-        // Get user's posts
-        const postsQuery = query(
-          collection(db, "posts"),
-          where("authorId", "==", userId),
-          where("isDeleted", "==", false),
-          orderBy("timestamp", "desc"),
-          limit(10),
-        )
-
-        const postsSnapshot = await getDocs(postsQuery)
-        const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
-
-        const postsData = postsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-
-        setPosts(postsData)
-        setLastVisible(lastVisibleDoc)
+      // Get user data - force a fresh fetch
+      const userData = await getUserById(userId)
+      if (!userData) {
+        console.error("User not found for ID:", userId)
+        setError("User not found")
         setLoading(false)
-      } catch (error) {
-        console.error("Error loading user data:", error)
-        setError("Failed to load user data")
-        setLoading(false)
+        return
       }
-    }
 
-    if (userId) {
-      loadUserData()
+      console.log("User data loaded:", userData)
+      setUser(userData)
+
+      // Check if current user is following this user
+      if (currentUser && currentUser.uid !== userId) {
+        const followStatus = await checkIsFollowing(currentUser.uid, userId)
+        setIsFollowing(followStatus)
+      }
+
+      // Get user's posts
+      await loadUserPosts()
+    } catch (error) {
+      console.error("Error loading user data:", error)
+      setError("Failed to load user data")
+      setLoading(false)
     }
+  }
+
+  // Add a useEffect to refresh the profile when the component is focused
+  useEffect(() => {
+    // Initial load
+    loadUserData()
+
+    // Set up an interval to refresh the data periodically
+    const refreshInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadUserData()
+      }
+    }, 30000) // Refresh every 30 seconds when visible
+
+    return () => clearInterval(refreshInterval)
   }, [userId, currentUser])
 
+  const loadUserPosts = async () => {
+    try {
+      if (!userId) return
+
+      console.log("Loading posts for user:", userId)
+
+      const postsQuery = query(
+        collection(db, "posts"),
+        where("authorId", "==", userId),
+        where("isDeleted", "==", false),
+        orderBy("timestamp", "desc"),
+        limit(10),
+      )
+
+      const postsSnapshot = await getDocs(postsQuery)
+      console.log("Posts query returned", postsSnapshot.docs.length, "documents")
+
+      const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
+
+      const postsData = postsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+
+      console.log("Posts data:", postsData)
+      setPosts(postsData)
+      setLastVisible(lastVisibleDoc)
+      setLoading(false)
+    } catch (error) {
+      console.error("Error loading user posts:", error)
+      setError("Failed to load user posts")
+      setLoading(false)
+    }
+  }
+
   const handleFollow = async () => {
-    if (!currentUser) return
+    if (!currentUser || isAdmin) return
 
     try {
       setFollowLoading(true)
@@ -146,18 +180,26 @@ export default function UserProfile() {
 
   if (loading && !user) {
     return (
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6 text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-        <p className="mt-2 text-gray-500">Loading profile...</p>
+      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-8 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cohere-accent mx-auto"></div>
+        <p className="mt-4 text-gray-700 font-medium">Loading profile...</p>
+        <p className="text-gray-500 text-sm mt-2">Please wait while we fetch the user data</p>
       </div>
     )
   }
 
   if (error && !user) {
     return (
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6 text-center">
-        <p className="text-red-500">{error}</p>
-        <Link to="/dashboard" className="mt-4 inline-block text-blue-500 hover:underline">
+      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-8 text-center">
+        <div className="bg-red-100 rounded-full p-4 w-16 h-16 mx-auto flex items-center justify-center">
+          <AlertCircle className="h-8 w-8 text-red-500" />
+        </div>
+        <h3 className="mt-4 text-lg font-medium text-gray-700">User Not Found</h3>
+        <p className="text-red-500 mt-2">{error}</p>
+        <Link
+          to="/dashboard"
+          className="mt-6 inline-block bg-cohere-accent hover:opacity-90 text-white py-2 px-6 rounded-md"
+        >
           Return to Dashboard
         </Link>
       </div>
@@ -215,21 +257,21 @@ export default function UserProfile() {
               {user?.bio && <p className="mt-3 text-gray-700">{user.bio}</p>}
 
               <div className="flex justify-center md:justify-start gap-6 mt-4">
-                <div className="text-center">
+                <Link to={`/profile/${userId}/followers`} className="text-center hover:bg-gray-50 p-2 rounded">
                   <p className="font-bold">{user?.postsCount || 0}</p>
                   <p className="text-gray-600 text-sm">Posts</p>
-                </div>
-                <div className="text-center">
+                </Link>
+                <Link to={`/profile/${userId}/followers`} className="text-center hover:bg-gray-50 p-2 rounded">
                   <p className="font-bold">{user?.followersCount || 0}</p>
                   <p className="text-gray-600 text-sm">Followers</p>
-                </div>
-                <div className="text-center">
+                </Link>
+                <Link to={`/profile/${userId}/following`} className="text-center hover:bg-gray-50 p-2 rounded">
                   <p className="font-bold">{user?.followingCount || 0}</p>
                   <p className="text-gray-600 text-sm">Following</p>
-                </div>
+                </Link>
               </div>
 
-              {currentUser && currentUser.uid !== userId && (
+              {currentUser && currentUser.uid !== userId && !isAdmin && (
                 <div className="mt-4">
                   <button
                     onClick={handleFollow}
@@ -237,7 +279,7 @@ export default function UserProfile() {
                     className={`flex items-center px-4 py-2 rounded-md ${
                       isFollowing
                         ? "bg-red-500 hover:bg-red-600 text-white"
-                        : "bg-blue-500 hover:bg-blue-600 text-white"
+                        : "bg-cohere-accent hover:bg-opacity-90 text-white"
                     }`}
                   >
                     {followLoading ? (
@@ -265,7 +307,7 @@ export default function UserProfile() {
         <div className="p-4">
           {loading && posts.length === 0 ? (
             <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cohere-accent mx-auto"></div>
               <p className="mt-2 text-gray-500">Loading posts...</p>
             </div>
           ) : posts.length === 0 ? (
@@ -306,10 +348,8 @@ export default function UserProfile() {
                     </div>
                   )}
 
-                  <div className="flex justify-between text-sm text-gray-500">
-                    <span>{post.likesCount || 0} likes</span>
-                    <span>{post.commentsCount || 0} comments</span>
-                  </div>
+                  {/* Post interactions */}
+                  <PostInteractions post={{ ...post, authorName: user?.username, authorPic: user?.profilePic }} />
                 </div>
               ))}
 
@@ -318,10 +358,10 @@ export default function UserProfile() {
                   <button
                     onClick={loadMorePosts}
                     disabled={loading}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center mx-auto"
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cohere-accent flex items-center mx-auto"
                   >
                     {loading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-cohere-accent mr-2"></div>
                     ) : (
                       <RefreshCw className="h-4 w-4 mr-2" />
                     )}
