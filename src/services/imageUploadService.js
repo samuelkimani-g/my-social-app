@@ -2,10 +2,8 @@
  * Service for handling image uploads to third-party services
  * This implementation uses Imgur's API, but can be replaced with any other service
  */
-
-// You'll need to register for an Imgur API client ID at https://api.imgur.com/oauth2/addclient
-// For development, you can use anonymous uploads which have a limit of 50 uploads per hour
-const IMGUR_CLIENT_ID = "YOUR_IMGUR_CLIENT_ID" // Replace with your Imgur client ID
+//key from imgur
+const IMGUR_CLIENT_ID = "d127bfc324a7bd6" // Replace with your Imgur client ID
 
 /**
  * Uploads an image to Imgur and returns the URL
@@ -53,13 +51,9 @@ export const uploadImageToImgur = async (imageData) => {
     throw new Error(`Failed to upload image: ${error.message}`)
   }
 }
-
-/**
- * Alternative implementation using ImgBB
- * You'll need to register for an ImgBB API key at https://api.imgbb.com/
- */
+//IMBB third party key//
 export const uploadImageToImgBB = async (imageData) => {
-  const IMGBB_API_KEY = "bb94fc57c4dc580dd1a496b49a6e357b" // Replace with your ImgBB API key
+  const IMGBB_API_KEY = "bb94fc57c4dc580dd1a496b49a6e357b" 
 
   try {
     console.log("Starting image upload to ImgBB")

@@ -1,17 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
 import { getUserById } from "../services/userService"
 import { followUser, unfollowUser, checkIsFollowing } from "../services/followService"
 import { User, Calendar, MapPin, Mail, UserPlus, UserMinus, RefreshCw, AlertCircle } from "lucide-react"
-import { collection, query, where, orderBy, limit, getDocs, startAfter } from "firebase/firestore"
 import { db } from "../firebase/firebase-config"
+import { collection, query, where, orderBy, limit, getDocs, startAfter } from "firebase/firestore"
 import PostInteractions from "../components/PostInteractions"
 
 export default function UserProfile() {
   const { userId } = useParams()
+  const navigate = useNavigate()
   const { currentUser, isAdmin } = useAuth()
   const [user, setUser] = useState(null)
   const [posts, setPosts] = useState([])
@@ -78,6 +79,8 @@ export default function UserProfile() {
 
       console.log("Loading posts for user:", userId)
 
+      // FIX: Use a simpler query that doesn't require a composite index
+      // and explicitly filter out deleted posts
       const postsQuery = query(
         collection(db, "posts"),
         where("authorId", "==", userId),
@@ -94,6 +97,8 @@ export default function UserProfile() {
       const postsData = postsSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        authorName: user?.username || "User",
+        authorPic: user?.profilePic || null,
       }))
 
       console.log("Posts data:", postsData)
@@ -166,6 +171,8 @@ export default function UserProfile() {
       const newPosts = postsSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        authorName: user?.username || "User",
+        authorPic: user?.profilePic || null,
       }))
 
       setPosts([...posts, ...newPosts])
@@ -257,10 +264,10 @@ export default function UserProfile() {
               {user?.bio && <p className="mt-3 text-gray-700">{user.bio}</p>}
 
               <div className="flex justify-center md:justify-start gap-6 mt-4">
-                <Link to={`/profile/${userId}/followers`} className="text-center hover:bg-gray-50 p-2 rounded">
+                <div className="text-center hover:bg-gray-50 p-2 rounded">
                   <p className="font-bold">{user?.postsCount || 0}</p>
                   <p className="text-gray-600 text-sm">Posts</p>
-                </Link>
+                </div>
                 <Link to={`/profile/${userId}/followers`} className="text-center hover:bg-gray-50 p-2 rounded">
                   <p className="font-bold">{user?.followersCount || 0}</p>
                   <p className="text-gray-600 text-sm">Followers</p>
@@ -344,6 +351,18 @@ export default function UserProfile() {
                         src={post.imageUrl || "/placeholder.svg"}
                         alt="Post"
                         className="rounded max-h-96 w-auto mx-auto"
+                      />
+                    </div>
+                  )}
+
+                  {/* Video support */}
+                  {post.videoUrl && (
+                    <div className="mb-3">
+                      <video
+                        src={post.videoUrl}
+                        controls
+                        className="rounded max-h-96 w-auto mx-auto"
+                        preload="metadata"
                       />
                     </div>
                   )}

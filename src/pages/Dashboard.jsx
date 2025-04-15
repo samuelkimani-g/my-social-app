@@ -375,14 +375,14 @@ export default function Dashboard() {
                     <p className="font-bold">{user?.postsCount || 0}</p>
                     <p className="text-gray-600 text-sm">Posts</p>
                   </div>
-                  <div className="text-center">
+                  <Link to={`/profile/${currentUser?.uid}/followers`} className="text-center hover:text-cohere-accent">
                     <p className="font-bold">{user?.followersCount || 0}</p>
                     <p className="text-gray-600 text-sm">Followers</p>
-                  </div>
-                  <div className="text-center">
+                  </Link>
+                  <Link to={`/profile/${currentUser?.uid}/following`} className="text-center hover:text-cohere-accent">
                     <p className="font-bold">{user?.followingCount || 0}</p>
                     <p className="text-gray-600 text-sm">Following</p>
-                  </div>
+                  </Link>
                 </div>
 
                 <Link

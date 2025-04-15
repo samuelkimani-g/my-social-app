@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { Bell, User, Check } from "lucide-react"
-import { getUserNotifications, markAllNotificationsAsRead } from "../services/notificationService"
+import {
+  getUserNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from "../services/notificationService"
 import { useAuth } from "../contexts/AuthContext"
 import { Link } from "react-router-dom"
 
@@ -16,14 +20,23 @@ export default function NotificationsDropdown() {
   useEffect(() => {
     if (currentUser) {
       loadNotifications()
+
+      // Set up polling for new notifications
+      const interval = setInterval(() => {
+        if (document.visibilityState === "visible") {
+          loadNotifications(true)
+        }
+      }, 30000) // Check every 30 seconds when visible
+
+      return () => clearInterval(interval)
     }
   }, [currentUser])
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (silent = false) => {
     if (!currentUser) return
 
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const notifs = await getUserNotifications(currentUser.uid, 20)
 
       // Sort notifications by date (newest first)
@@ -35,10 +48,10 @@ export default function NotificationsDropdown() {
 
       setNotifications(notifs)
       setUnreadCount(notifs.filter((n) => !n.read).length)
-      setLoading(false)
+      if (!silent) setLoading(false)
     } catch (error) {
       console.error("Error loading notifications:", error)
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -54,10 +67,26 @@ export default function NotificationsDropdown() {
     }
   }
 
+  const handleNotificationClick = async (notification) => {
+    if (!notification.read) {
+      try {
+        await markNotificationAsRead(notification.id)
+
+        // Update local state
+        setNotifications(notifications.map((n) => (n.id === notification.id ? { ...n, read: true } : n)))
+        setUnreadCount((prev) => Math.max(prev - 1, 0))
+      } catch (error) {
+        console.error("Error marking notification as read:", error)
+      }
+    }
+
+    setIsOpen(false)
+  }
+
   const formatNotificationTime = (timestamp) => {
     if (!timestamp) return "Just now"
 
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000)
     const now = new Date()
     const diffMs = now - date
     const diffSec = Math.floor(diffMs / 1000)
@@ -143,7 +172,7 @@ export default function NotificationsDropdown() {
                   <Link
                     key={notification.id}
                     to={getNotificationLink(notification)}
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => handleNotificationClick(notification)}
                     className={`block p-4 hover:bg-gray-50 border-b border-gray-100 ${
                       !notification.read ? "bg-blue-50" : ""
                     }`}
@@ -154,7 +183,7 @@ export default function NotificationsDropdown() {
                           <img
                             src={notification.fromUserPic || "/placeholder.svg"}
                             alt={notification.fromUserName}
-                            className="h-10 w-10 rounded-full"
+                            className="h-10 w-10 rounded-full object-cover"
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
@@ -166,6 +195,7 @@ export default function NotificationsDropdown() {
                         <p className="text-sm text-gray-800">{getNotificationContent(notification)}</p>
                         <p className="text-xs text-gray-500 mt-1">{formatNotificationTime(notification.createdAt)}</p>
                       </div>
+                      {!notification.read && <div className="ml-2 h-2 w-2 bg-blue-500 rounded-full"></div>}
                     </div>
                   </Link>
                 ))}
@@ -174,15 +204,13 @@ export default function NotificationsDropdown() {
           </div>
 
           <div className="p-2 border-t border-gray-200 text-center">
-            <button
-              onClick={() => {
-                loadNotifications()
-                setIsOpen(false)
-              }}
-              className="text-xs text-cohere-accent hover:text-cohere-primary"
+            <Link
+              to="/notifications"
+              onClick={() => setIsOpen(false)}
+              className="text-xs text-cohere-accent hover:text-cohere-primary block"
             >
-              Refresh
-            </button>
+              View all notifications
+            </Link>
           </div>
         </div>
       )}
