@@ -5,10 +5,10 @@ import { useParams, Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext.jsx"
 import { getUserById } from "../services/userService"
 import { followUser, unfollowUser, checkIsFollowing } from "../services/followService"
+import { getUserPosts } from "../services/postService"
 import { User, Calendar, MapPin, Mail, UserPlus, UserMinus, RefreshCw, AlertCircle } from "lucide-react"
-import { db } from "../firebase/firebase-config"
-import { collection, query, where, orderBy, limit, getDocs, startAfter } from "firebase/firestore"
 import PostInteractions from "../components/PostInteractions"
+import EditPostModal from "../components/EditPostModal"
 
 export default function UserProfile() {
   const { userId } = useParams()
@@ -21,6 +21,8 @@ export default function UserProfile() {
   const [error, setError] = useState("")
   const [isFollowing, setIsFollowing] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState(null) // Add activeTab state
+  const [editingPost, setEditingPost] = useState(null) // Add state for editing posts
 
   // Update the loadUserData function to ensure fresh data
   const loadUserData = async () => {
@@ -49,8 +51,12 @@ export default function UserProfile() {
         setIsFollowing(followStatus)
       }
 
-      // Get user's posts
-      await loadUserPosts()
+      // Load posts if activeTab is set to 'posts'
+      if (activeTab === "posts") {
+        await loadUserPosts()
+      } else {
+        setLoading(false)
+      }
     } catch (error) {
       console.error("Error loading user data:", error)
       setError("Failed to load user data")
@@ -71,39 +77,34 @@ export default function UserProfile() {
     }, 30000) // Refresh every 30 seconds when visible
 
     return () => clearInterval(refreshInterval)
-  }, [userId, currentUser])
+  }, [userId, currentUser, activeTab]) // Add activeTab as dependency
 
   const loadUserPosts = async () => {
     try {
       if (!userId) return
 
       console.log("Loading posts for user:", userId)
+      setLoading(true)
 
-      // FIX: Use a simpler query that doesn't require a composite index
-      // and explicitly filter out deleted posts
-      const postsQuery = query(
-        collection(db, "posts"),
-        where("authorId", "==", userId),
-        where("isDeleted", "==", false),
-        orderBy("timestamp", "desc"),
-        limit(10),
-      )
+      // Use the getUserPosts function from postService
+      const result = await getUserPosts(userId, lastVisible)
 
-      const postsSnapshot = await getDocs(postsQuery)
-      console.log("Posts query returned", postsSnapshot.docs.length, "documents")
+      if (result) {
+        setPosts(result.posts || [])
+        setLastVisible(result.lastVisible)
 
-      const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
+        // Add user data to posts
+        const postsWithUserData = result.posts.map((post) => ({
+          ...post,
+          authorName: user?.username || "User",
+          authorPic: user?.profilePic || null,
+        }))
 
-      const postsData = postsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        authorName: user?.username || "User",
-        authorPic: user?.profilePic || null,
-      }))
+        setPosts(postsWithUserData)
+      } else {
+        setPosts([])
+      }
 
-      console.log("Posts data:", postsData)
-      setPosts(postsData)
-      setLastVisible(lastVisibleDoc)
       setLoading(false)
     } catch (error) {
       console.error("Error loading user posts:", error)
@@ -156,33 +157,68 @@ export default function UserProfile() {
     try {
       setLoading(true)
 
-      const postsQuery = query(
-        collection(db, "posts"),
-        where("authorId", "==", userId),
-        where("isDeleted", "==", false),
-        orderBy("timestamp", "desc"),
-        startAfter(lastVisible),
-        limit(10),
-      )
+      const result = await getUserPosts(userId, lastVisible)
 
-      const postsSnapshot = await getDocs(postsQuery)
-      const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
+      if (result && result.posts.length > 0) {
+        // Add user data to posts
+        const newPostsWithUserData = result.posts.map((post) => ({
+          ...post,
+          authorName: user?.username || "User",
+          authorPic: user?.profilePic || null,
+        }))
 
-      const newPosts = postsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        authorName: user?.username || "User",
-        authorPic: user?.profilePic || null,
-      }))
+        setPosts([...posts, ...newPostsWithUserData])
+        setLastVisible(result.lastVisible)
+      }
 
-      setPosts([...posts, ...newPosts])
-      setLastVisible(lastVisibleDoc)
       setLoading(false)
     } catch (error) {
       console.error("Error loading more posts:", error)
       setError("Failed to load more posts")
       setLoading(false)
     }
+  }
+
+  // Handle post interactions
+  const handlePostUpdate = (updateData) => {
+    // Handle post editing
+    if (updateData?.editingPost) {
+      setEditingPost(updateData.editingPost)
+      return
+    }
+
+    // Handle post deletion
+    if (updateData?.deletedPostId) {
+      setPosts(posts.filter((post) => post.id !== updateData.deletedPostId))
+      // Update post count in user data
+      setUser((prev) => ({
+        ...prev,
+        postsCount: Math.max((prev.postsCount || 0) - 1, 0),
+      }))
+      return
+    }
+
+    // Handle edited posts
+    if (updateData && !updateData.deletedPostId && !updateData.editingPost) {
+      setPosts(posts.map((post) => (post.id === updateData.id ? { ...post, ...updateData } : post)))
+    }
+  }
+
+  // Close edit modal
+  const handleCloseEditModal = () => {
+    setEditingPost(null)
+  }
+
+  // Update post after edit
+  const handleUpdateEditedPost = (updatedPost) => {
+    // Update the post in the list
+    setPosts(posts.map((post) => (post.id === updatedPost.id ? { ...post, ...updatedPost } : post)))
+    setEditingPost(null)
+  }
+
+  const handlePostCountClick = () => {
+    setActiveTab("posts")
+    loadUserPosts()
   }
 
   if (loading && !user) {
@@ -264,10 +300,13 @@ export default function UserProfile() {
               {user?.bio && <p className="mt-3 text-gray-700">{user.bio}</p>}
 
               <div className="flex justify-center md:justify-start gap-6 mt-4">
-                <div className="text-center hover:bg-gray-50 p-2 rounded">
+                <button
+                  onClick={handlePostCountClick}
+                  className="text-center hover:bg-gray-50 p-2 rounded cursor-pointer"
+                >
                   <p className="font-bold">{user?.postsCount || 0}</p>
                   <p className="text-gray-600 text-sm">Posts</p>
-                </div>
+                </button>
                 <Link to={`/profile/${userId}/followers`} className="text-center hover:bg-gray-50 p-2 rounded">
                   <p className="font-bold">{user?.followersCount || 0}</p>
                   <p className="text-gray-600 text-sm">Followers</p>
@@ -308,7 +347,7 @@ export default function UserProfile() {
       {/* User Posts */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="p-4 border-b border-gray-200">
-          <h3 className="font-medium text-gray-800">Posts</h3>
+          <h3 className="font-medium text-gray-800">{activeTab === "posts" ? `${user?.username}'s Posts` : "Posts"}</h3>
         </div>
 
         <div className="p-4">
@@ -339,6 +378,7 @@ export default function UserProfile() {
                       <p className="font-medium text-gray-800">{user?.username}</p>
                       <p className="text-xs text-gray-500">
                         {post.timestamp ? new Date(post.timestamp.seconds * 1000).toLocaleString() : "Recently"}
+                        {post.isEdited && <span className="ml-2 italic">(edited)</span>}
                       </p>
                     </div>
                   </div>
@@ -368,7 +408,10 @@ export default function UserProfile() {
                   )}
 
                   {/* Post interactions */}
-                  <PostInteractions post={{ ...post, authorName: user?.username, authorPic: user?.profilePic }} />
+                  <PostInteractions
+                    post={{ ...post, authorName: user?.username, authorPic: user?.profilePic }}
+                    onUpdate={handlePostUpdate}
+                  />
                 </div>
               ))}
 
@@ -392,6 +435,11 @@ export default function UserProfile() {
           )}
         </div>
       </div>
+
+      {/* Edit Post Modal */}
+      {editingPost && (
+        <EditPostModal post={editingPost} onClose={handleCloseEditModal} onUpdate={handleUpdateEditedPost} />
+      )}
     </div>
   )
 }

@@ -1,10 +1,9 @@
-import { db } from "../firebase/firebase-config"
 import {
   collection,
   doc,
+  addDoc,
   getDoc,
   getDocs,
-  addDoc,
   updateDoc,
   query,
   where,
@@ -12,63 +11,53 @@ import {
   limit,
   startAfter,
   serverTimestamp,
+  deleteDoc,
   increment,
+  Timestamp,
 } from "firebase/firestore"
+import { db } from "../firebase/firebase-config"
+import { auth } from "../firebase/firebase-config"; 
 
 // Create a new post
 export const createPost = async (postData) => {
   try {
     console.log("Creating post with data:", postData)
 
-    // Validate required fields
-    if (!postData.authorId) {
-      console.error("Author ID is required")
+    // Get current user from localStorage
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("No user found in localStorage")
       return null
     }
 
-    // Create a timestamp now to use in both the database and return value
-    const now = serverTimestamp()
-    const clientTimestamp = { seconds: Date.now() / 1000, nanoseconds: 0 }
-
-    const postsRef = collection(db, "posts")
-    const newPost = await addDoc(postsRef, {
-      ...postData,
+    // Create post document
+    const postRef = collection(db, "posts")
+    const newPost = {
+      content: postData.content || "",
+      authorId: currentUser.uid,
+      timestamp: serverTimestamp(),
       likesCount: 0,
       commentsCount: 0,
+      likes: [],
       isDeleted: false,
-      timestamp: now,
-    })
-
-    console.log("Post created with ID:", newPost.id)
-
-    // Update user's post count
-    try {
-      const userRef = doc(db, "users", postData.authorId)
-      const userSnapshot = await getDoc(userRef)
-
-      if (userSnapshot.exists()) {
-        const userData = userSnapshot.data()
-        await updateDoc(userRef, {
-          postsCount: (userData.postsCount || 0) + 1,
-        })
-        console.log("Updated user post count")
-      } else {
-        console.log("User document not found, couldn't update post count")
-      }
-    } catch (userError) {
-      console.error("Error updating user post count:", userError)
-      // Continue even if updating user post count fails
+      imageUrl: postData.imageUrl || null,
+      videoUrl: postData.videoUrl || null,
     }
 
-    // Return both the ID and a normalized post object with a client-side timestamp
-    // that can be used immediately without waiting for the server timestamp
+    const docRef = await addDoc(postRef, newPost)
+    console.log("Post created with ID:", docRef.id)
+
+    // Update user's post count
+    const userRef = doc(db, "users", currentUser.uid)
+    await updateDoc(userRef, {
+      postsCount: increment(1),
+    })
+
+    // Return the created post with its ID
     return {
-      id: newPost.id,
-      ...postData,
-      likesCount: 0,
-      commentsCount: 0,
-      isDeleted: false,
-      timestamp: clientTimestamp,
+      id: docRef.id,
+      ...newPost,
+      timestamp: Timestamp.now(), // Use current timestamp for immediate display
     }
   } catch (error) {
     console.error("Error creating post:", error)
@@ -76,38 +65,80 @@ export const createPost = async (postData) => {
   }
 }
 
-// Get post by ID
-export const getPostById = async (postId) => {
-  try {
-    console.log("Getting post by ID:", postId)
-    const postRef = doc(db, "posts", postId)
-    const postSnapshot = await getDoc(postRef)
-
-    if (postSnapshot.exists()) {
-      const postData = { id: postSnapshot.id, ...postSnapshot.data() }
-      console.log("Post data retrieved:", postData)
-      return postData
-    } else {
-      console.log("Post not found")
-      return null
-    }
-  } catch (error) {
-    console.error("Error getting post:", error)
-    return null
-  }
-}
-
-// Get all posts (for feed or admin)
+// Get all posts
 export const getAllPosts = async (lastVisible = null, limitCount = 10) => {
   try {
-    console.log("Getting all posts, lastVisible:", lastVisible ? "yes" : "no")
+    console.log("Getting all posts")
 
     let postsQuery
 
-    // Use a simpler query that doesn't require a composite index
     if (lastVisible) {
       postsQuery = query(
         collection(db, "posts"),
+        where("isDeleted", "==", false),
+        orderBy("timestamp", "desc"),
+        startAfter(lastVisible),
+        limit(limitCount),
+      )
+    } else {
+      postsQuery = query(
+        collection(db, "posts"),
+        where("isDeleted", "==", false),
+        orderBy("timestamp", "desc"),
+        limit(limitCount),
+      )
+    }
+
+    const postsSnapshot = await getDocs(postsQuery)
+    console.log("Posts query returned", postsSnapshot.docs.length, "documents")
+
+    if (postsSnapshot.empty) {
+      console.log("No posts found")
+      return { posts: [], lastVisible: null }
+    }
+
+    const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
+
+    const posts = postsSnapshot.docs.map((doc) => {
+      const data = doc.data()
+      // Ensure timestamp is properly formatted
+      const timestamp = data.timestamp ? data.timestamp : { seconds: Date.now() / 1000 }
+
+      return {
+        id: doc.id,
+        ...data,
+        timestamp,
+      }
+    })
+
+    console.log("Processed posts:", posts.length)
+    return { posts, lastVisible: lastVisibleDoc }
+  } catch (error) {
+    console.error("Error getting all posts:", error)
+    return { posts: [], lastVisible: null }
+  }
+}
+
+// Add the getAllPostsForAdmin function after the getAllPosts function
+
+// Get all posts for admin dashboard
+export const getAllPostsForAdmin = async (lastVisible = null, limitCount = 20) => {
+  try {
+    console.log("Getting all posts for admin")
+
+    // Get current user from localStorage
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.role !== "admin") {
+      console.error("Unauthorized access to admin function")
+      return { posts: [], lastVisible: null }
+    }
+
+    let postsQuery
+
+    if (lastVisible) {
+      postsQuery = query(
+        collection(db, "posts"),
+        where("isDeleted", "==", false),
         orderBy("timestamp", "desc"),
         startAfter(lastVisible),
         limit(limitCount),
@@ -117,36 +148,31 @@ export const getAllPosts = async (lastVisible = null, limitCount = 10) => {
     }
 
     const postsSnapshot = await getDocs(postsQuery)
-    console.log("Posts query returned", postsSnapshot.docs.length, "documents")
+    console.log("Admin posts query returned", postsSnapshot.docs.length, "documents")
 
     if (postsSnapshot.empty) {
-      console.log("No posts found in the database")
+      console.log("No posts found")
       return { posts: [], lastVisible: null }
     }
 
-    const lastVisibleDoc = postsSnapshot.docs.length > 0 ? postsSnapshot.docs[postsSnapshot.docs.length - 1] : null
+    const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
 
-    const posts = postsSnapshot.docs
-      .map((doc) => {
-        const data = doc.data()
-        // Filter out deleted posts on the client side instead of in the query
-        if (data.isDeleted) return null
+    const posts = postsSnapshot.docs.map((doc) => {
+      const data = doc.data()
+      // Ensure timestamp is properly formatted
+      const timestamp = data.timestamp ? data.timestamp : { seconds: Date.now() / 1000 }
 
-        // Ensure timestamp is properly formatted
-        const timestamp = data.timestamp ? data.timestamp : { seconds: Date.now() / 1000 }
+      return {
+        id: doc.id,
+        ...data,
+        timestamp,
+      }
+    })
 
-        return {
-          id: doc.id,
-          ...data,
-          timestamp,
-        }
-      })
-      .filter((post) => post !== null) // Remove deleted posts
-
-    console.log("Returning posts:", posts.length)
+    console.log("Processed admin posts:", posts.length)
     return { posts, lastVisible: lastVisibleDoc }
   } catch (error) {
-    console.error("Error getting posts:", error)
+    console.error("Error getting admin posts:", error)
     return { posts: [], lastVisible: null }
   }
 }
@@ -154,24 +180,19 @@ export const getAllPosts = async (lastVisible = null, limitCount = 10) => {
 // Get posts from followed users
 export const getFollowedPosts = async (userId, followingIds, lastVisible = null, limitCount = 10) => {
   try {
-    console.log("Getting followed posts for user:", userId, "following:", followingIds)
+    console.log("Getting posts for followed users:", followingIds)
 
-    // If no following IDs, return empty result
     if (!followingIds || followingIds.length === 0) {
-      console.log("No following IDs provided, returning empty result")
+      console.log("No following IDs provided")
       return { posts: [], lastVisible: null }
     }
-
-    // Include user's own posts and followed users' posts
-    const idsToQuery = [...followingIds, userId].slice(0, 10) // Firestore "in" query limited to 10 values
-    console.log("IDs to query:", idsToQuery)
 
     let postsQuery
 
     if (lastVisible) {
       postsQuery = query(
         collection(db, "posts"),
-        where("authorId", "in", idsToQuery),
+        where("authorId", "in", followingIds),
         where("isDeleted", "==", false),
         orderBy("timestamp", "desc"),
         startAfter(lastVisible),
@@ -180,7 +201,7 @@ export const getFollowedPosts = async (userId, followingIds, lastVisible = null,
     } else {
       postsQuery = query(
         collection(db, "posts"),
-        where("authorId", "in", idsToQuery),
+        where("authorId", "in", followingIds),
         where("isDeleted", "==", false),
         orderBy("timestamp", "desc"),
         limit(limitCount),
@@ -191,7 +212,95 @@ export const getFollowedPosts = async (userId, followingIds, lastVisible = null,
     console.log("Followed posts query returned", postsSnapshot.docs.length, "documents")
 
     if (postsSnapshot.empty) {
-      console.log("No followed posts found")
+      console.log("No posts found for followed users")
+      return { posts: [], lastVisible: null }
+    }
+
+    const lastVisibleDoc = postsSnapshot.docs[postsSnapshot.docs.length - 1]
+
+    const posts = postsSnapshot.docs.map((doc) => {
+      const data = doc.data()
+      // Ensure timestamp is properly formatted
+      const timestamp = data.timestamp ? data.timestamp : { seconds: Date.now() / 1000 }
+
+      return {
+        id: doc.id,
+        ...data,
+        timestamp,
+      }
+    })
+
+    console.log("Processed followed posts:", posts.length)
+    return { posts, lastVisible: lastVisibleDoc }
+  } catch (error) {
+    console.error("Error getting followed posts:", error)
+    return { posts: [], lastVisible: null }
+  }
+}
+
+// Get a single post by ID
+export const getPostById = async (postId) => {
+  try {
+    console.log("Getting post by ID:", postId)
+
+    const postRef = doc(db, "posts", postId)
+    const postSnapshot = await getDoc(postRef)
+
+    if (!postSnapshot.exists()) {
+      console.log("Post not found")
+      return null
+    }
+
+    const postData = postSnapshot.data()
+
+    // Check if post is deleted
+    if (postData.isDeleted) {
+      console.log("Post is deleted")
+      return null
+    }
+
+    return {
+      id: postSnapshot.id,
+      ...postData,
+      timestamp: postData.timestamp || { seconds: Date.now() / 1000 },
+    }
+  } catch (error) {
+    console.error("Error getting post by ID:", error)
+    return null
+  }
+}
+
+// Get posts by user ID
+export const getUserPosts = async (userId, lastVisible = null, limitCount = 10) => {
+  try {
+    console.log("Getting posts for user:", userId)
+
+    let postsQuery
+
+    if (lastVisible) {
+      postsQuery = query(
+        collection(db, "posts"),
+        where("authorId", "==", userId),
+        where("isDeleted", "==", false),
+        orderBy("timestamp", "desc"),
+        startAfter(lastVisible),
+        limit(limitCount),
+      )
+    } else {
+      postsQuery = query(
+        collection(db, "posts"),
+        where("authorId", "==", userId),
+        where("isDeleted", "==", false),
+        orderBy("timestamp", "desc"),
+        limit(limitCount),
+      )
+    }
+
+    const postsSnapshot = await getDocs(postsQuery)
+    console.log("User posts query returned", postsSnapshot.docs.length, "documents")
+
+    if (postsSnapshot.empty) {
+      console.log("No posts found for this user")
       return { posts: [], lastVisible: null }
     }
 
@@ -209,111 +318,301 @@ export const getFollowedPosts = async (userId, followingIds, lastVisible = null,
       }
     })
 
-    console.log("Processed followed posts:", posts)
+    console.log("Processed user posts:", posts)
     return { posts, lastVisible: lastVisibleDoc }
   } catch (error) {
-    console.error("Error getting followed posts:", error)
+    console.error("Error getting user posts:", error)
     return { posts: [], lastVisible: null }
   }
 }
 
-// Delete post (admin or author)
-export const deletePost = async (postId) => {
+// Edit a post
+export const editPost = async (postId, updates) => {
   try {
-    console.log("Soft deleting post:", postId)
-    const postRef = doc(db, "posts", postId)
+    const postRef = doc(db, "posts", postId);
+    const postSnapshot = await getDoc(postRef);
+    const postData = postSnapshot.data();
+    const currentUser = auth.currentUser;
 
-    // Get the post data first to verify it exists
-    const postSnapshot = await getDoc(postRef)
-    if (!postSnapshot.exists()) {
-      console.error("Post not found:", postId)
-      return false
+    // Allow if user is author OR admin
+    if (
+      postData.authorId !== currentUser?.uid && 
+      currentUser?.role !== "admin"
+    ) {
+      console.error("Not authorized to edit");
+      return false;
     }
 
-    // Update the post with deletion flags
+    await updateDoc(postRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error editing post:", error);
+    return false;
+  }
+};
+
+// Delete a post
+export const deletePost = async (postId) => {
+  try {
+    const postRef = doc(db, "posts", postId);
+    const postSnapshot = await getDoc(postRef);
+    const postData = postSnapshot.data();
+    const currentUser = auth.currentUser;
+    // Allow if user is author OR admin
+    if (
+      postData.authorId !== currentUser?.uid && 
+      currentUser?.role !== "admin"
+    ) {
+      console.error("Not authorized");
+      return false;
+    }
+
+    // Soft delete logic
     await updateDoc(postRef, {
       isDeleted: true,
       deletedAt: serverTimestamp(),
-      deletionReason: "Admin removed",
-    })
+    });
 
-    console.log("Post marked as deleted successfully")
-    return true
+    // Update post count (only for authors, not admins)
+    if (postData.authorId === currentUser?.uid) {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, { postsCount: increment(-1) });
+    }
+
+    return true;
   } catch (error) {
-    console.error("Error deleting post:", error)
-    return false
+    console.error("Error deleting post:", error);
+    return false;
   }
-}
-
-// Permanently delete post (admin only)
-export const permanentlyDeletePost = async (postId) => {
+};
+// Hard delete a post (admin only)
+export const hardDeletePost = async (postId) => {
   try {
-    console.log("Permanently deleting post:", postId)
-    const postRef = doc(db, "posts", postId)
+    console.log("Hard deleting post:", postId)
 
-    // Get post data for author's post count update
+    // First check if the post exists
+    const postRef = doc(db, "posts", postId)
     const postSnapshot = await getDoc(postRef)
+
     if (!postSnapshot.exists()) {
-      console.error("Post not found for permanent deletion:", postId)
+      console.error("Post not found")
       return false
     }
 
     const postData = postSnapshot.data()
+    const currentUser = auth.currentUser;
 
-    // Update author's post count
-    if (postData.authorId) {
-      const authorRef = doc(db, "users", postData.authorId)
-      const authorSnapshot = await getDoc(authorRef)
-      if (authorSnapshot.exists()) {
-        const authorData = authorSnapshot.data()
-        await updateDoc(authorRef, {
-          postsCount: Math.max((authorData.postsCount || 0) - 1, 0),
-        })
-        console.log("Updated author post count for user:", postData.authorId)
-      }
+    // Security check - only allow admins to hard delete
+    if (currentUser?.role !== "admin") {
+      console.error("Not authorized to hard delete posts")
+      return false
     }
 
-    // Mark the post as permanently deleted
-    // Note: In a real app, you might want to actually delete the document
-    // but for audit purposes, we're just marking it
-    await updateDoc(postRef, {
-      isDeleted: true,
-      deletedAt: serverTimestamp(),
-      permanentlyDeleted: true,
-      deletionReason: "Admin permanent removal",
+    // Hard delete the post
+    await deleteDoc(postRef)
+
+    // Update user's post count
+    const userRef = doc(db, "users", postData.authorId)
+    await updateDoc(userRef, {
+      postsCount: increment(-1),
     })
 
-    console.log("Post permanently deleted")
+    console.log("Post hard deleted successfully")
     return true
   } catch (error) {
-    console.error("Error permanently deleting post:", error)
+    console.error("Error hard deleting post:", error)
     return false
   }
 }
 
-// Search posts by content
-export const searchPosts = async (searchTerm, limitCount = 10) => {
-  try {
-    console.log("Searching posts with term:", searchTerm)
+// Add this function after the hardDeletePost function
 
-    // Firebase doesn't support native LIKE queries, so we'll get recent posts and filter
-    // In a production app, you'd use a more scalable approach like Algolia
+// Permanently delete a post (admin only) - alias for hardDeletePost for compatibility
+export const permanentlyDeletePost = async (postId) => {
+  return hardDeletePost(postId)
+}
+
+// Like a post
+export const likePost = async (userId, postId) => {
+  try {
+    console.log("Liking post:", postId, "by user:", userId)
+
+    const postRef = doc(db, "posts", postId)
+    const postSnapshot = await getDoc(postRef)
+
+    if (!postSnapshot.exists()) {
+      console.error("Post not found")
+      return { success: false, message: "Post not found" }
+    }
+
+    const postData = postSnapshot.data()
+
+    // Check if user already liked the post
+    const likes = postData.likes || []
+    if (likes.includes(userId)) {
+      console.log("User already liked this post")
+      return { success: false, message: "Already liked" }
+    }
+
+    // Add user to likes array and increment count
+    await updateDoc(postRef, {
+      likes: [...likes, userId],
+      likesCount: increment(1),
+    })
+
+    console.log("Post liked successfully")
+    return { success: true }
+  } catch (error) {
+    console.error("Error liking post:", error)
+    return { success: false, message: error.message }
+  }
+}
+
+// Unlike a post
+export const unlikePost = async (userId, postId) => {
+  try {
+    console.log("Unliking post:", postId, "by user:", userId)
+
+    const postRef = doc(db, "posts", postId)
+    const postSnapshot = await getDoc(postRef)
+
+    if (!postSnapshot.exists()) {
+      console.error("Post not found")
+      return { success: false, message: "Post not found" }
+    }
+
+    const postData = postSnapshot.data()
+
+    // Check if user has liked the post
+    const likes = postData.likes || []
+    if (!likes.includes(userId)) {
+      console.log("User hasn't liked this post")
+      return { success: false, message: "Not liked yet" }
+    }
+
+    // Remove user from likes array and decrement count
+    await updateDoc(postRef, {
+      likes: likes.filter((id) => id !== userId),
+      likesCount: increment(-1),
+    })
+
+    console.log("Post unliked successfully")
+    return { success: true }
+  } catch (error) {
+    console.error("Error unliking post:", error)
+    return { success: false, message: error.message }
+  }
+}
+
+// Upload image to external service (IMGBB)
+export const uploadImageExternal = async (imageFile) => {
+  try {
+    console.log("Uploading image to external service")
+
+    // Create form data for the image upload
+    const formData = new FormData()
+    formData.append("image", imageFile)
+
+    // Use a free image hosting service like ImgBB
+    // Note: In a production app, you would use your own API key
+    const response = await fetch("https://api.imgbb.com/1/upload?key=YOUR_IMGBB_API_KEY", {
+      method: "POST",
+      body: formData,
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      console.log("Image uploaded successfully:", data.data.url)
+      return data.data.url
+    } else {
+      console.error("Failed to upload image:", data)
+      throw new Error("Image upload failed")
+    }
+  } catch (error) {
+    console.error("Error uploading image:", error)
+    throw error
+  }
+}
+
+// Get trending posts
+export const getTrendingPosts = async (limitCount = 10) => {
+  try {
+    console.log("Getting trending posts")
+
+    // Query posts with high like counts
+    const postsQuery = query(
+      collection(db, "posts"),
+      where("isDeleted", "==", false),
+      orderBy("likesCount", "desc"),
+      limit(limitCount),
+    )
+
+    const postsSnapshot = await getDocs(postsQuery)
+    console.log("Trending posts query returned", postsSnapshot.docs.length, "documents")
+
+    if (postsSnapshot.empty) {
+      console.log("No trending posts found")
+      return []
+    }
+
+    const posts = postsSnapshot.docs.map((doc) => {
+      const data = doc.data()
+      return {
+        id: doc.id,
+        ...data,
+        timestamp: data.timestamp || { seconds: Date.now() / 1000 },
+      }
+    })
+
+    console.log("Processed trending posts:", posts.length)
+    return posts
+  } catch (error) {
+    console.error("Error getting trending posts:", error)
+    return []
+  }
+}
+
+// Search posts by content
+export const searchPosts = async (searchTerm, limitCount = 20) => {
+  try {
+    console.log("Searching posts for:", searchTerm)
+
+    // Get all non-deleted posts
     const postsQuery = query(
       collection(db, "posts"),
       where("isDeleted", "==", false),
       orderBy("timestamp", "desc"),
-      limit(100), // Limit to prevent loading too many posts
+      limit(100), // Get a larger batch to filter through
     )
 
     const postsSnapshot = await getDocs(postsQuery)
     console.log("Search query returned", postsSnapshot.docs.length, "documents")
 
+    if (postsSnapshot.empty) {
+      console.log("No posts found for search")
+      return []
+    }
+
+    // Filter posts by content containing the search term
+    const searchTermLower = searchTerm.toLowerCase()
     const filteredPosts = postsSnapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((post) => post.content && post.content.toLowerCase().includes(searchTerm.toLowerCase()))
+      .map((doc) => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          ...data,
+          timestamp: data.timestamp || { seconds: Date.now() / 1000 },
+        }
+      })
+      .filter((post) => post.content && post.content.toLowerCase().includes(searchTermLower))
       .slice(0, limitCount)
 
-    console.log("Filtered to", filteredPosts.length, "matching posts")
+    console.log("Filtered search results:", filteredPosts.length)
     return filteredPosts
   } catch (error) {
     console.error("Error searching posts:", error)
@@ -321,85 +620,102 @@ export const searchPosts = async (searchTerm, limitCount = 10) => {
   }
 }
 
-// Get all posts for admin (including deleted ones)
-export const getAllPostsForAdmin = async (lastVisible = null, limitCount = 20) => {
+// Update post comment count
+export const updatePostCommentCount = async (postId, increment) => {
   try {
-    let postsQuery
+    console.log("Updating comment count for post:", postId, "by:", increment)
 
-    if (lastVisible) {
-      postsQuery = query(
-        collection(db, "posts"),
-        orderBy("timestamp", "desc"),
-        startAfter(lastVisible),
-        limit(limitCount),
-      )
-    } else {
-      postsQuery = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(limitCount))
-    }
-
-    const postsSnapshot = await getDocs(postsQuery)
-    const lastVisibleDoc = postsSnapshot.docs.length > 0 ? postsSnapshot.docs[postsSnapshot.docs.length - 1] : null
-
-    const posts = postsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }))
-
-    return { posts, lastVisible: lastVisibleDoc }
-  } catch (error) {
-    console.error("Error getting posts for admin:", error)
-    return { posts: [], lastVisible: null }
-  }
-}
-
-// Get reported or flagged posts
-export const getFlaggedPosts = async (limitCount = 20) => {
-  try {
-    const postsQuery = query(
-      collection(db, "posts"),
-      where("flagged", "==", true),
-      orderBy("timestamp", "desc"),
-      limit(limitCount),
-    )
-
-    const postsSnapshot = await getDocs(postsQuery)
-
-    const posts = postsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }))
-
-    return posts
-  } catch (error) {
-    console.error("Error getting flagged posts:", error)
-    return []
-  }
-}
-
-// Flag a post for review
-export const flagPostForReview = async (postId, userId, reason) => {
-  try {
     const postRef = doc(db, "posts", postId)
-    const flagRef = collection(db, "flags")
+    await updateDoc(postRef, {
+      commentsCount: increment,
+    })
 
-    // Add flag record
-    await addDoc(flagRef, {
+    console.log("Comment count updated successfully")
+    return true
+  } catch (error) {
+    console.error("Error updating comment count:", error)
+    return false
+  }
+}
+
+// Report a post
+export const reportPost = async (postId, userId, reason) => {
+  try {
+    console.log("Reporting post:", postId, "by user:", userId)
+
+    // Create a report document
+    const reportRef = collection(db, "reports")
+    await addDoc(reportRef, {
       postId,
-      userId,
+      reportedBy: userId,
       reason,
       timestamp: serverTimestamp(),
       status: "pending", // pending, reviewed, dismissed
     })
 
-    // Mark post as flagged
-    await updateDoc(postRef, {
-      flagged: true,
-      flagCount: increment(1),
-    })
-
+    console.log("Post reported successfully")
     return true
   } catch (error) {
-    console.error("Error flagging post:", error)
+    console.error("Error reporting post:", error)
     return false
   }
 }
+
+// Get reported posts (admin only)
+export const getReportedPosts = async () => {
+  try {
+    console.log("Getting reported posts")
+
+    const currentUser = auth.currentUser;
+
+    // Security check - only allow admins
+    if (currentUser?.role !== "admin") {
+      console.error("Not authorized to view reported posts")
+      return []
+    }
+
+    // Get all pending reports
+    const reportsQuery = query(
+      collection(db, "reports"),
+      where("status", "==", "pending"),
+      orderBy("timestamp", "desc"),
+    )
+
+    const reportsSnapshot = await getDocs(reportsQuery)
+    console.log("Reports query returned", reportsSnapshot.docs.length, "documents")
+
+    if (reportsSnapshot.empty) {
+      console.log("No reports found")
+      return []
+    }
+
+    // Get all reported posts
+    const reportedPosts = []
+    for (const reportDoc of reportsSnapshot.docs) {
+      const reportData = reportDoc.data()
+
+      // Get the post data
+      const postRef = doc(db, "posts", reportData.postId)
+      const postSnapshot = await getDoc(postRef)
+
+      if (postSnapshot.exists()) {
+        const postData = postSnapshot.data()
+        reportedPosts.push({
+          reportId: reportDoc.id,
+          ...reportData,
+          post: {
+            id: postSnapshot.id,
+            ...postData,
+          },
+        })
+      }
+    }
+
+    console.log("Processed reported posts:", reportedPosts.length)
+    return reportedPosts
+  } catch (error) {
+    console.error("Error getting reported posts:", error)
+    return []
+  }
+}
+

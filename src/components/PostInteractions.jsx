@@ -6,6 +6,11 @@ import { useAuth } from "../contexts/AuthContext"
 import { likePost, unlikePost, checkUserLikedPost } from "../services/likeService"
 import { createComment, getPostComments, deleteComment, editComment } from "../services/commentService"
 import { getUserById } from "../services/userService"
+import { deletePost } from "../services/postService"
+import DeleteConfirmationDialog from "../components/DeleteConfirmationDialog"
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import EditPostModal from "../components/EditPostModal";
 
 export default function PostInteractions({ post, onUpdate }) {
   const { currentUser, isAdmin } = useAuth()
@@ -21,6 +26,8 @@ export default function PostInteractions({ post, onUpdate }) {
   const [editingComment, setEditingComment] = useState(null)
   const [editText, setEditText] = useState("")
   const commentInputRef = useRef(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     if (currentUser && post.id) {
@@ -40,7 +47,58 @@ export default function PostInteractions({ post, onUpdate }) {
       loadUserDataForComments()
     }
   }, [comments])
-
+  const validateSession = () => {
+  const storedUser = JSON.parse(localStorage.getItem("user"));
+  if (!storedUser?.uid || storedUser.uid !== currentUser?.uid) {
+    logout();
+    navigate("/login");
+  }
+};
+  const handleDeleteConfirmed = async () => {
+    setShowDeleteDialog(false);
+    try {
+      const success = await deletePost(post.id);
+      
+      if (success) {
+        // Successful deletion handling
+        if (onUpdate) {
+          onUpdate({ 
+            deletedPostId: post.id,
+            deletionType: "user" // or "admin" based on your logic
+          });
+        }
+        
+        // Show success feedback
+        toast.success("Post was successfully removed", {
+          icon: "🗑️",
+          autoClose: 2000
+        });
+      } else {
+        // Authorization failure handling
+        toast.error("You don't have permission to delete this post", {
+          icon: "⚠️",
+          autoClose: 3000
+        });
+        
+        // Log detailed error for debugging
+        console.warn("Delete failed - possible authorization issue", {
+          postId: post.id,
+          currentUser: JSON.parse(localStorage.getItem("user"))
+        });
+      }
+    } catch (error) {
+      // Network/server error handling
+      console.error("Delete operation failed:", {
+        error,
+        postId: post.id
+      });
+      
+      toast.error("Failed to delete post. Please try again.", {
+        icon: "❌",
+        autoClose: 4000
+      });
+    }
+  };
   const loadUserDataForComments = async () => {
     try {
       const commentsWithUserData = await Promise.all(
@@ -57,7 +115,11 @@ export default function PostInteractions({ post, onUpdate }) {
       console.error("Error loading user data for comments:", error)
     }
   }
-
+  
+  // In PostInteractions.jsx props
+  const handleDeleteInitiated = () => {
+    setShowDeleteDialog(true);
+  };
   const checkLikeStatus = async () => {
     try {
       if (!currentUser || isAdmin) return
@@ -171,6 +233,36 @@ export default function PostInteractions({ post, onUpdate }) {
     }
   }
 
+  // Handle edit post
+  const openEditModal = () => {
+    console.log("openEditModal called");
+    setShowEditModal(true);
+  };
+
+  // Handle delete post
+  const handleDelete = async (postId) => {
+    if (!currentUser) return;
+  
+    try {
+      setLoading(true);
+      const success = await deletePost(postId);
+  
+      if (success) {
+        // Notify parent component of deletion
+        if (onUpdate) onUpdate({ deletedPostId: postId });
+  
+        // Redirect if on post page
+        if (window.location.pathname.includes("/post/")) {
+          window.location.href = "/dashboard";
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting post:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteComment = async (commentId) => {
     if (!currentUser) return
 
@@ -267,6 +359,52 @@ export default function PostInteractions({ post, onUpdate }) {
           <Share2 className="h-5 w-5" />
           <span>Share</span>
         </button>
+
+        {/* Edit Button */}
+        {currentUser?.uid === post.authorId && (
+  <button
+    onClick={() => openEditModal(post)}
+    className="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-700 transition-colors duration-200"
+    aria-label="Edit post"
+  >
+    <Edit2 className="h-5 w-5" />
+    <span>Edit</span>
+  </button>
+)}
+
+
+        {/* Delete Button */}
+        {currentUser?.uid === post.authorId && (
+  <button
+    onClick={() => {
+      if (window.confirm("Are you sure you want to delete this post?")) {
+        deletePost(post.id).then((success) => {
+          if (success && onUpdate) {
+            onUpdate({ deletedPostId: post.id, deletionType: "user" });
+            console.log("Post deleted successfully");
+          } else {
+            console.error("Delete failed - possible authorization issue", {
+              postId: post.id,
+              currentUser: currentUser,
+            });
+          }
+        });
+      }
+    }}
+    className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 transition-colors duration-200"
+    aria-label="Delete post"
+  >
+    <Trash2 className="h-5 w-5" />
+    <span>Delete</span>
+  </button>
+)}
+
+       
+         <DeleteConfirmationDialog
+      isOpen={showDeleteDialog}
+      onConfirm={handleDeleteConfirmed}
+      onCancel={() => setShowDeleteDialog(false)}
+    />
       </div>
 
       {/* Comments section - hidden by default */}
@@ -383,6 +521,20 @@ export default function PostInteractions({ post, onUpdate }) {
               </button>
             </form>
           )}
+       {showEditModal && (
+  <EditPostModal
+    post={post}
+    onClose={() => setShowEditModal(false)}
+    onUpdate={(updatedPost) => {
+      // Update local post state
+      setPost({ ...post, ...updatedPost });
+      setShowEditModal(false);
+      console.log("Post updated via modal:", updatedPost);
+    }}
+  />
+)}
+
+
         </div>
       )}
     </div>

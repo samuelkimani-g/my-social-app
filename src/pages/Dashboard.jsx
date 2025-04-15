@@ -87,6 +87,30 @@ export default function Dashboard() {
 
     initializeUser()
   }, [currentUser])
+  // In Dashboard.jsx
+const Dashboard = () => {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadPosts = async () => {
+    setLoading(true);
+    const data = await getAllPosts();
+    setPosts(data.posts);
+    setLoading(false);
+  };
+
+  // Pass this to PostInteractions
+  const handlePostUpdate = ({ deletedPostId }) => {
+    setPosts(posts.filter(p => p.id !== deletedPostId));
+  };
+
+  return (
+    <PostInteractions
+      post={post}
+      onUpdate={handlePostUpdate} // Add this prop
+    />
+  );
+};
 
   const loadSuggestedUsers = async () => {
     try {

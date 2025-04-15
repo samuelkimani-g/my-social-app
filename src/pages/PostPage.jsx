@@ -136,10 +136,25 @@ export default function PostPage() {
       }
 
       // Update post in Firestore
-      const success = await editPost(postId, {
-        content: editedContent.trim(),
-        imageUrl,
-      })
+const success = await editPost(postId, {
+  content: editedContent.trim(),
+  imageUrl, // Ensure this matches the field name in Firestore
+});
+// In PostPage.jsx handleSaveEdit()
+if (success) {
+  // Existing code
+  setPost({
+    ...post,
+    content: editedContent.trim(),
+    imageUrl,
+    isEdited: true,
+    editTimestamp: new Date(),
+  });
+  setIsEditing(false);
+  
+  // Add this line
+  toast.success("Post updated successfully"); // Add toast notification
+}
 
       if (success) {
         // Update local state to reflect changes
@@ -194,6 +209,15 @@ export default function PostPage() {
           <button onClick={() => navigate(-1)} className="mr-2 p-1 rounded-full hover:bg-gray-100">
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
+          // In PostPage.jsx edit button
+<button
+  disabled={uploadingImage || editedContent.trim() === ""}
+  className={`px-4 py-2 bg-cohere-accent text-white rounded-md ${
+    uploadingImage ? "opacity-50" : "hover:bg-blue-600"
+  }`}
+>
+  {uploadingImage ? "Saving..." : "Save"}
+</button>
           <h2 className="text-xl font-semibold">Post</h2>
         </div>
 

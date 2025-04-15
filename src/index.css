@@ -94,3 +94,19 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+
+/* Add transition effects */
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Dialog animation */
+.Dialog-overlay {
+  transition: opacity 0.2s ease-out;
+}
+
+.Dialog-content {
+  transition: 
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out;
+}
