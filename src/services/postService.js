@@ -15,9 +15,7 @@ import {
   increment,
   Timestamp,
 } from "firebase/firestore"
-import { db } from "../firebase/firebase-config"
-import { auth } from "../firebase/firebase-config"; 
-
+import { db, auth } from "../firebase/firebase-config";
 // Create a new post
 export const createPost = async (postData) => {
   try {
@@ -64,6 +62,22 @@ export const createPost = async (postData) => {
     return null
   }
 }
+// Update a post
+export const updatePost = async (postId, updatedData) => {
+  try {
+    const postRef = doc(db, "posts", postId);
+    await updateDoc(postRef, {
+      ...updatedData,
+      updatedAt: serverTimestamp(),
+    });
+    console.log("Post updated successfully");
+    return true;
+  } catch (error) {
+    console.error("Error editing post:", error);
+    return false;
+  }
+};
+
 
 // Get all posts
 export const getAllPosts = async (lastVisible = null, limitCount = 10) => {
@@ -237,6 +251,16 @@ export const getFollowedPosts = async (userId, followingIds, lastVisible = null,
     return { posts: [], lastVisible: null }
   }
 }
+export const getPostsByUser = async (userId) => {
+  const q = query(
+    collection(db, "posts"),
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+};
 
 // Get a single post by ID
 export const getPostById = async (postId) => {
@@ -332,13 +356,9 @@ export const editPost = async (postId, updates) => {
     const postRef = doc(db, "posts", postId);
     const postSnapshot = await getDoc(postRef);
     const postData = postSnapshot.data();
-    const currentUser = auth.currentUser;
+    const currentUser = auth.currentUser; // Make sure to use auth.currentUser here
 
-    // Allow if user is author OR admin
-    if (
-      postData.authorId !== currentUser?.uid && 
-      currentUser?.role !== "admin"
-    ) {
+    if (postData.authorId !== currentUser?.uid && currentUser?.role !== "admin") {
       console.error("Not authorized to edit");
       return false;
     }

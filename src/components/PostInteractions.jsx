@@ -28,6 +28,9 @@ export default function PostInteractions({ post, onUpdate }) {
   const commentInputRef = useRef(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [isEditModalOpen, setEditModalOpen] = useState(false);
+const [editingPost, setEditingPost] = useState(null);
+
 
   useEffect(() => {
     if (currentUser && post.id) {
@@ -234,11 +237,12 @@ export default function PostInteractions({ post, onUpdate }) {
   }
 
   // Handle edit post
-  const openEditModal = () => {
+  const openEditModal = (post) => {
     console.log("openEditModal called");
-    setShowEditModal(true);
+    setEditingPost(post);
+    setEditModalOpen(true);
   };
-
+  
   // Handle delete post
   const handleDelete = async (postId) => {
     if (!currentUser) return;
@@ -332,80 +336,73 @@ export default function PostInteractions({ post, onUpdate }) {
   }
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-100">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={handleLikeToggle}
-          disabled={loading || isAdmin}
-          className={`flex items-center gap-1 text-sm ${
-            liked ? "text-red-500" : "text-gray-500 hover:text-red-500"
-          } transition-colors duration-200`}
-        >
-          <Heart
-            className={`h-5 w-5 ${liked ? "fill-current" : ""} transition-all duration-300 ${loading ? "animate-pulse" : ""}`}
-          />
-          <span>{likesCount}</span>
-        </button>
+<div className="mt-4 pt-4 border-t border-gray-200">
+  <div className="flex items-center justify-between flex-wrap gap-3 text-sm font-medium text-gray-500">
+    {/* Like */}
+    <button
+      onClick={handleLikeToggle}
+      disabled={loading || isAdmin}
+      className={`flex items-center gap-1 transition-colors duration-200 ${
+        liked ? "text-red-500" : "hover:text-red-500"
+      }`}
+    >
+      <Heart className={`h-5 w-5 ${liked ? "fill-current" : ""} ${loading ? "animate-pulse" : ""}`} />
+      <span>{likesCount}</span>
+    </button>
 
-        <button
-          onClick={handleCommentToggle}
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-cohere-accent transition-colors duration-200"
-        >
-          <MessageSquare className="h-5 w-5" />
-          <span>{commentsCount}</span>
-        </button>
+    {/* Comment */}
+    <button
+      onClick={handleCommentToggle}
+      className="flex items-center gap-1 hover:text-cohere-accent transition-colors duration-200"
+    >
+      <MessageSquare className="h-5 w-5" />
+      <span>{commentsCount}</span>
+    </button>
 
-        <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-cohere-accent transition-colors duration-200">
-          <Share2 className="h-5 w-5" />
-          <span>Share</span>
-        </button>
+    {/* Share */}
+    <button className="flex items-center gap-1 hover:text-cohere-accent transition-colors duration-200">
+      <Share2 className="h-5 w-5" />
+      <span>Share</span>
+    </button>
 
-        {/* Edit Button */}
-        {currentUser?.uid === post.authorId && (
-  <button
-    onClick={() => openEditModal(post)}
-    className="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-700 transition-colors duration-200"
-    aria-label="Edit post"
-  >
-    <Edit2 className="h-5 w-5" />
-    <span>Edit</span>
-  </button>
-)}
+    {/* Edit */}
+    {currentUser?.uid === post.authorId && (
+      <button
+        onClick={() => openEditModal(post)}
+        className="flex items-center gap-1 text-blue-500 hover:text-blue-700 transition-colors duration-200"
+        aria-label="Edit post"
+      >
+        <Edit2 className="h-5 w-5" />
+        <span>Edit</span>
+      </button>
+    )}
+
+    {/* Delete */}
+    {currentUser?.uid === post.authorId && (
+      <button
+        onClick={() => setShowDeleteDialog(true)}
+        className="flex items-center gap-1 text-red-500 hover:text-red-700 transition-colors duration-200"
+        aria-label="Delete post"
+      >
+        <Trash2 className="h-5 w-5" />
+        <span>Delete</span>
+      </button>
+    )}
 
 
-        {/* Delete Button */}
-        {currentUser?.uid === post.authorId && (
-  <button
-    onClick={() => {
-      if (window.confirm("Are you sure you want to delete this post?")) {
-        deletePost(post.id).then((success) => {
-          if (success && onUpdate) {
-            onUpdate({ deletedPostId: post.id, deletionType: "user" });
-            console.log("Post deleted successfully");
-          } else {
-            console.error("Delete failed - possible authorization issue", {
-              postId: post.id,
-              currentUser: currentUser,
-            });
-          }
-        });
-      }
-    }}
-    className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 transition-colors duration-200"
-    aria-label="Delete post"
-  >
-    <Trash2 className="h-5 w-5" />
-    <span>Delete</span>
-  </button>
-)}
+  {/* Delete Dialog */}
+  <DeleteConfirmationDialog
+    isOpen={showDeleteDialog}
+    onConfirm={handleDeleteConfirmed}
+    onCancel={() => setShowDeleteDialog(false)}
+    title="Delete Post"
+    message="This action is permanent and cannot be undone. Are you absolutely sure you want to delete this post? This will erase all its likes, comments, and visibility forever."
+    confirmText="Yes, Delete Permanently"
+    cancelText="Cancel"
+    className="text-sm"
+  />
+</div>
 
-       
-         <DeleteConfirmationDialog
-      isOpen={showDeleteDialog}
-      onConfirm={handleDeleteConfirmed}
-      onCancel={() => setShowDeleteDialog(false)}
-    />
-      </div>
 
       {/* Comments section - hidden by default */}
       {showComments && (
@@ -521,20 +518,35 @@ export default function PostInteractions({ post, onUpdate }) {
               </button>
             </form>
           )}
-       {showEditModal && (
-  <EditPostModal
+    {showEditModal && (
+  <EditPostModal 
     post={post}
     onClose={() => setShowEditModal(false)}
     onUpdate={(updatedPost) => {
-      // Update local post state
-      setPost({ ...post, ...updatedPost });
+      // Update local state with updated post content
+      setPost({
+        ...post,
+        content: updatedPost.content,
+        imageUrl: updatedPost.imageUrl,
+        isEdited: true,
+        editTimestamp: new Date(),
+      });
       setShowEditModal(false);
       console.log("Post updated via modal:", updatedPost);
     }}
   />
 )}
-
-
+{isEditModalOpen && editingPost && (
+  <EditPostModal
+    post={editingPost}
+    onClose={() => setEditModalOpen(false)}
+    onUpdate={(updatedData) => {
+      setPost((prevPost) => ({ ...prevPost, ...updatedData }));
+      console.log("Post updated via modal:", updatedData);
+      setEditModalOpen(false);
+    }}
+  />
+)}
         </div>
       )}
     </div>

@@ -394,20 +394,31 @@ const Dashboard = () => {
                 <h2 className="text-xl font-bold text-gray-800">{user?.username || "User"}</h2>
                 <p className="text-gray-600 text-sm mt-1">{user?.email}</p>
 
-                <div className="flex justify-around w-full mt-4">
-                  <div className="text-center">
-                    <p className="font-bold">{user?.postsCount || 0}</p>
-                    <p className="text-gray-600 text-sm">Posts</p>
-                  </div>
-                  <Link to={`/profile/${currentUser?.uid}/followers`} className="text-center hover:text-cohere-accent">
-                    <p className="font-bold">{user?.followersCount || 0}</p>
-                    <p className="text-gray-600 text-sm">Followers</p>
-                  </Link>
-                  <Link to={`/profile/${currentUser?.uid}/following`} className="text-center hover:text-cohere-accent">
-                    <p className="font-bold">{user?.followingCount || 0}</p>
-                    <p className="text-gray-600 text-sm">Following</p>
-                  </Link>
-                </div>
+                <div className="flex justify-between w-full mt-6 px-4 sm:px-10">
+  <Link
+    to="/my-posts"
+    className="flex-1 text-center transition duration-200 hover:bg-gray-100 rounded-lg py-2 mx-1"
+  >
+    <p className="text-lg font-semibold text-gray-800">{user?.postsCount || 0}</p>
+    <p className="text-sm text-gray-500">Posts</p>
+  </Link>
+
+  <Link
+    to={`/profile/${currentUser?.uid}/followers`}
+    className="flex-1 text-center transition duration-200 hover:bg-gray-100 rounded-lg py-2 mx-1"
+  >
+    <p className="text-lg font-semibold text-gray-800">{user?.followersCount || 0}</p>
+    <p className="text-sm text-gray-500">Followers</p>
+  </Link>
+
+  <Link
+    to={`/profile/${currentUser?.uid}/following`}
+    className="flex-1 text-center transition duration-200 hover:bg-gray-100 rounded-lg py-2 mx-1"
+  >
+    <p className="text-lg font-semibold text-gray-800">{user?.followingCount || 0}</p>
+    <p className="text-sm text-gray-500">Following</p>
+  </Link>
+</div>
 
                 <Link
                   to="/profile"

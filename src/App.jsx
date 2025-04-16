@@ -14,6 +14,7 @@ import Navbar from "./components/Navbar.jsx"
 import { useAuth } from "./contexts/AuthContext.jsx"
 import { useEffect } from "react"
 import ProfileFollowers from "./pages/ProfileFollowers.jsx"
+import MyPosts from "./pages/MyPosts";
 
 function App() {
   const { currentUser, isAdmin } = useAuth()
@@ -123,6 +124,20 @@ function App() {
               </div>
             }
           />
+          <Route
+  path="/my-posts"
+  element={
+    currentUser ? (
+      isAdmin ? (
+        <Navigate to="/admin-dashboard" />
+      ) : (
+        <MyPosts />
+      )
+    ) : (
+      <Navigate to="/login" />
+    )
+  }
+/>
         </Routes>
       </div>
     </div>

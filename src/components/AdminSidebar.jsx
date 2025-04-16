@@ -8,15 +8,10 @@ import {
   FileText,
   BarChart2,
   ClipboardList,
-  Settings,
-  Shield,
   LogOut,
   Menu,
   X,
   ChevronRight,
-  Bell,
-  Flag,
-  UserX,
   Home,
 } from "lucide-react"
 
@@ -65,30 +60,6 @@ export default function AdminSidebar() {
       path: "/admin-dashboard?tab=logs",
       badge: null,
     },
-    {
-      title: "Flagged Content",
-      icon: Flag,
-      path: "/admin-dashboard?tab=flagged",
-      badge: 3,
-    },
-    {
-      title: "Banned Users",
-      icon: UserX,
-      path: "/admin-dashboard?tab=banned",
-      badge: null,
-    },
-    {
-      title: "Notifications",
-      icon: Bell,
-      path: "/admin-dashboard?tab=notifications",
-      badge: 5,
-    },
-    {
-      title: "Settings",
-      icon: Settings,
-      path: "/admin-dashboard?tab=settings",
-      badge: null,
-    },
   ]
 
   const isActive = (path) => {
@@ -131,8 +102,8 @@ export default function AdminSidebar() {
 
         {/* Header */}
         <div className="p-4 border-b border-cohere-secondary flex items-center">
-          <Shield className="h-8 w-8 text-cohere-accent" />
-          <h2 className={`ml-2 font-bold text-xl ${isOpen ? "block" : "hidden"}`}>Admin Panel</h2>
+          <img src="/cohere-icon.svg" alt="Cohere Logo" className="h-8 w-8" />
+          <h2 className={`ml-2 font-bold text-xl ${isOpen ? "block" : "hidden"}`}>Cohere</h2>
         </div>
 
         {/* User Info */}
